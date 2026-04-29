@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_document_intelligence_review_wizard_form" model="ir.ui.view">
+        <field name="name">document.intelligence.review.wizard.form</field>
+        <field name="model">document.intelligence.review.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Review Extracted Data">
+
+                <!-- Confidence + type banner -->
+                <div class="alert alert-info" role="status" style="margin-bottom: 0;">
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Detected type:</strong>
+                            <field name="detected_document_type" readonly="1"
+                                   nolabel="1" class="ms-2"/>
+                        </div>
+                        <div class="col-6">
+                            <strong>Confidence:</strong>
+                            <field name="confidence_score" readonly="1" nolabel="1"
+                                   widget="progressbar"
+                                   options="{'editable': false}"
+                                   class="ms-2" style="width: 120px; display: inline-block;"/>
+                        </div>
+                    </div>
+                    <div class="row mt-1" invisible="not processing_notes">
+                        <div class="col-12 text-muted">
+                            <i class="fa fa-info-circle"/>
+                            <field name="processing_notes" readonly="1" nolabel="1"
+                                   class="ms-1"/>
+                        </div>
+                    </div>
+                </div>
+
+                <sheet>
+                    <group string="Action to Perform">
+                        <field name="suggested_action" widget="radio"/>
+                        <field name="partner_id"
+                               invisible="suggested_action not in ('create_invoice',)"
+                               string="Match to Partner"/>
+                    </group>
+
+                    <!-- ── Editable extracted fields ─────────────────────── -->
+                    <group string="Extracted Data — Review and Correct if Needed" col="2">
+                        <group string="Document Details">
+                            <field name="vendor_name"/>
+                            <field name="reference_number"/>
+                            <field name="document_date"/>
+                            <field name="total_amount"/>
+                            <field name="currency_detected"/>
+                            <field name="tax_amount"/>
+                        </group>
+                        <group string="Contact Info">
+                            <field name="contact_name"/>
+                            <field name="contact_phone"/>
+                            <field name="contact_email"/>
+                            <field name="contact_address" widget="text"/>
+                        </group>
+                    </group>
+
+                    <group string="Other Extracted Fields"
+                           invisible="not extra_fields_display">
+                        <field name="extra_fields_display" readonly="1"
+                               nolabel="1" colspan="2"
+                               style="font-family: monospace; font-size: 12px;"/>
+                    </group>
+
+                    <!-- ── Raw text collapsible ───────────────────────────── -->
+                    <group string="Raw OCR Text (for reference)">
+                        <field name="raw_text" readonly="1" nolabel="1" colspan="2"
+                               widget="text"
+                               style="font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto;"/>
+                    </group>
+                </sheet>
+
+                <footer>
+                    <button name="action_approve_and_create"
+                            string="Approve &amp; Create Record"
+                            type="object"
+                            class="btn-primary"/>
+                    <button name="action_save_and_close"
+                            string="Save &amp; Review Later"
+                            type="object"
+                            class="btn-secondary"/>
+                    <button name="action_reject"
+                            string="Reject"
+                            type="object"
+                            class="btn-danger"
+                            confirm="This will reset the document to draft. Continue?"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_document_intelligence_template_list" model="ir.ui.view">
+        <field name="name">document.intelligence.template.list</field>
+        <field name="model">document.intelligence.template</field>
+        <field name="arch" type="xml">
+            <tree string="Extraction Templates">
+                <field name="name"/>
+                <field name="document_type"/>
+                <field name="usage_count"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_document_intelligence_template_form" model="ir.ui.view">
+        <field name="name">document.intelligence.template.form</field>
+        <field name="model">document.intelligence.template</field>
+        <field name="arch" type="xml">
+            <form string="Extraction Template">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Template name..."/></h1>
+                    </div>
+                    <group col="2">
+                        <group>
+                            <field name="document_type"/>
+                            <field name="usage_count" readonly="1"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="description" placeholder="What is this template for?"/>
+                        </group>
+                    </group>
+                    <group string="Fields to Extract">
+                        <field name="fields_to_extract" nolabel="1" colspan="2"
+                               placeholder="vendor&#10;date&#10;total&#10;phone&#10;address"
+                               widget="text"
+                               style="min-height: 120px;"/>
+                    </group>
+                    <group string="AI Prompt Hint (optional)">
+                        <field name="prompt_hint" nolabel="1" colspan="2"
+                               placeholder="Example: This is a Rwandan supplier invoice. Amounts are in RWF."
+                               widget="text"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+
+</odoo>

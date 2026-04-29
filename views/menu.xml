@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Actions defined here so they exist before the menu items reference them -->
+
+    <record id="action_document_intelligence_record" model="ir.actions.act_window">
+        <field name="name">Documents</field>
+        <field name="res_model">document.intelligence.record</field>
+        <field name="view_mode">tree,kanban,form</field>
+    </record>
+
+    <record id="action_document_intelligence_template" model="ir.actions.act_window">
+        <field name="name">Extraction Templates</field>
+        <field name="res_model">document.intelligence.template</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_document_intelligence_config" model="ir.actions.act_window">
+        <field name="name">Document Intelligence Settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'document_intelligence'}</field>
+    </record>
+
+    <!-- Root menu -->
+    <menuitem
+        id="menu_document_intelligence_root"
+        name="Document Intelligence"
+        sequence="95"
+    />
+
+    <!-- Documents -->
+    <menuitem
+        id="menu_document_intelligence_documents"
+        name="Documents"
+        parent="menu_document_intelligence_root"
+        sequence="10"
+        action="action_document_intelligence_record"
+    />
+
+    <!-- Templates -->
+    <menuitem
+        id="menu_document_intelligence_templates"
+        name="Extraction Templates"
+        parent="menu_document_intelligence_root"
+        sequence="20"
+        action="action_document_intelligence_template"
+    />
+
+    <!-- Configuration -->
+    <menuitem
+        id="menu_document_intelligence_config"
+        name="Configuration"
+        parent="menu_document_intelligence_root"
+        sequence="99"
+        groups="base.group_system"
+    />
+
+    <menuitem
+        id="menu_document_intelligence_settings"
+        name="Settings"
+        parent="menu_document_intelligence_config"
+        sequence="10"
+        action="action_document_intelligence_config"
+    />
+
+</odoo>

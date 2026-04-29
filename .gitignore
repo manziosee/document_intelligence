@@ -1,0 +1,31 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Odoo compiled assets
+*.manifest
+*.zip
+*.tar.gz
+
+# IDE / editor files
+.idea/
+.vscode/
+*.swp
+
+# Environment files – never commit real keys
+.env
+
+# Docker artefacts
+Dockerfile
+*.dockerignore
+
+# Log files
+*.log
+
+# Byte‑code / virtual envs
+*.egg-info/
+venv/
+
+# Other temporary files
+*.tmp

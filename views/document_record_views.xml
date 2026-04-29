@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ── List view ──────────────────────────────────────────────────────── -->
+    <record id="view_document_intelligence_record_list" model="ir.ui.view">
+        <field name="name">document.intelligence.record.list</field>
+        <field name="model">document.intelligence.record</field>
+        <field name="arch" type="xml">
+            <tree string="Documents"
+                  decoration-success="state == 'done'"
+                  decoration-danger="state == 'error'"
+                  decoration-warning="state == 'review'"
+                  decoration-muted="state == 'draft'">
+                <field name="name"/>
+                <field name="input_mode" optional="show"/>
+                <field name="file_name"/>
+                <field name="source_record_display" optional="show" string="Linked Record"/>
+                <field name="detected_document_type"/>
+                <field name="extraction_mode"/>
+                <field name="confidence_score" widget="progressbar"
+                       options="{'editable': false}"/>
+                <field name="vendor_name"/>
+                <field name="document_date"/>
+                <field name="total_amount"/>
+                <field name="currency_detected"/>
+                <field name="suggested_action"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-danger="state == 'error'"
+                       decoration-warning="state == 'review'"
+                       decoration-info="state == 'processing'"/>
+                <field name="create_date" string="Created"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ── Form view ──────────────────────────────────────────────────────── -->
+    <record id="view_document_intelligence_record_form" model="ir.ui.view">
+        <field name="name">document.intelligence.record.form</field>
+        <field name="model">document.intelligence.record</field>
+        <field name="arch" type="xml">
+            <form string="Document Intelligence">
+                <header>
+                    <button name="action_extract"
+                            string="Extract Data"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state not in ('draft',)"
+                            data-hotkey="e"/>
+                    <button name="action_open_review"
+                            string="Review &amp; Create Record"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'review'"/>
+                    <button name="action_create_odoo_record"
+                            string="Create Odoo Record"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="state != 'review'"
+                            confirm="Create the Odoo record now without reviewing again?"/>
+                    <button name="action_reset_to_draft"
+                            string="Reset to Draft"
+                            type="object"
+                            invisible="state in ('draft', 'done')"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,processing,review,done"/>
+                </header>
+
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Document name..."/>
+                        </h1>
+                    </div>
+
+                    <!-- ── Source linked record info ───────────────────────── -->
+                    <div class="alert alert-secondary"
+                         invisible="not source_record_display"
+                         role="note">
+                        <i class="fa fa-link me-1"/>
+                        Linked from Odoo record:
+                        <strong><field name="source_record_display" readonly="1" nolabel="1"/></strong>
+                    </div>
+
+                    <!-- ── Input mode toggle ───────────────────────────────── -->
+                    <group string="Document Source" invisible="state != 'draft'">
+                        <field name="input_mode" widget="radio" nolabel="1"
+                               options="{'horizontal': true}"/>
+                    </group>
+
+                    <!-- ── Option A: upload new file ──────────────────────── -->
+                    <group string="Upload New File"
+                           invisible="input_mode != 'upload' or state != 'draft'">
+                        <group>
+                            <field name="file_data" filename="file_name"
+                                   widget="binary" string="Choose File"/>
+                            <field name="file_name" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="file_mimetype" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <!-- ── Option B: pick existing Odoo attachment ─────────── -->
+                    <group string="Select Existing Odoo Document"
+                           invisible="input_mode != 'existing' or state != 'draft'">
+                        <group>
+                            <field name="source_attachment_id"
+                                   domain="[('type', '=', 'binary')]"
+                                   options="{'no_create': True}"
+                                   help="Pick any file already attached to an Odoo record"/>
+                            <field name="file_name" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="source_model" readonly="1"
+                                   invisible="not source_model"/>
+                            <field name="source_record_display" readonly="1"
+                                   invisible="not source_record_display"/>
+                        </group>
+                    </group>
+
+                    <!-- ── Extraction config ──────────────────────────────── -->
+                    <group string="Extraction Settings" invisible="state != 'draft'">
+                        <group>
+                            <field name="extraction_mode" widget="radio"/>
+                        </group>
+                        <group>
+                            <field name="template_id"
+                                   invisible="extraction_mode != 'template'"
+                                   required="extraction_mode == 'template'"/>
+                            <field name="custom_fields_input"
+                                   invisible="extraction_mode != 'custom'"
+                                   required="extraction_mode == 'custom'"
+                                   placeholder="vendor, date, total, phone, address"/>
+                            <field name="extra_prompt"
+                                   placeholder="Extra AI context: e.g. Amounts are in RWF"/>
+                        </group>
+                    </group>
+
+                    <!-- ── AI Results ─────────────────────────────────────── -->
+                    <group string="Extraction Results"
+                           invisible="state in ('draft', 'processing')">
+                        <group>
+                            <field name="detected_document_type"/>
+                            <field name="suggested_action"/>
+                            <field name="confidence_score" widget="progressbar"
+                                   options="{'editable': false}"/>
+                        </group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="linked_move_id" readonly="1"
+                                   invisible="not linked_move_id"/>
+                            <field name="linked_applicant_id" readonly="1"
+                                   invisible="not linked_applicant_id"/>
+                            <field name="processing_notes" readonly="1"
+                                   invisible="not processing_notes"/>
+                        </group>
+                    </group>
+
+                    <!-- ── Extracted + editable data ─────────────────────── -->
+                    <notebook invisible="state in ('draft', 'processing')">
+
+                        <page string="Business Data" name="business_data">
+                            <group col="2">
+                                <group string="Document Details">
+                                    <field name="vendor_name"/>
+                                    <field name="reference_number"/>
+                                    <field name="document_date"/>
+                                    <field name="total_amount"/>
+                                    <field name="currency_detected"/>
+                                    <field name="tax_amount"/>
+                                </group>
+                                <group string="Contact Info">
+                                    <field name="contact_name"/>
+                                    <field name="contact_phone"/>
+                                    <field name="contact_email"/>
+                                    <field name="contact_address" widget="text"/>
+                                </group>
+                            </group>
+                            <group string="Other Extracted Fields"
+                                   invisible="not extra_fields_display">
+                                <field name="extra_fields_display"
+                                       readonly="1" nolabel="1" colspan="2"/>
+                            </group>
+                        </page>
+
+                        <page string="Raw OCR Text" name="raw_text">
+                            <div class="alert alert-info" role="note">
+                                <i class="fa fa-info-circle"/>
+                                This is the raw text extracted by OCR from your document.
+                                The AI used this text to produce the structured data above.
+                            </div>
+                            <field name="raw_text" readonly="1" nolabel="1"
+                                   widget="text"
+                                   style="font-family: monospace; font-size: 12px; white-space: pre-wrap;"/>
+                        </page>
+
+                        <page string="Extracted JSON" name="extracted_json">
+                            <field name="extracted_data_json" readonly="1" nolabel="1"
+                                   widget="text"
+                                   style="font-family: monospace; font-size: 12px;"/>
+                        </page>
+
+                        <page string="Created Records" name="created_records"
+                              invisible="not created_move_id and not created_partner_id">
+                            <group>
+                                <field name="created_move_id" readonly="1"/>
+                                <field name="created_partner_id" readonly="1"/>
+                            </group>
+                        </page>
+
+                    </notebook>
+
+                    <!-- Processing spinner -->
+                    <div class="alert alert-info" role="status"
+                         invisible="state != 'processing'">
+                        <i class="fa fa-spinner fa-spin me-2"/>
+                        Processing document — OCR and AI extraction in progress...
+                    </div>
+
+                    <!-- Error banner -->
+                    <div class="alert alert-danger" role="alert"
+                         invisible="state != 'error'">
+                        <strong>Extraction failed.</strong>
+                        <span class="ms-2">
+                            <field name="processing_notes" readonly="1" nolabel="1"/>
+                        </span>
+                    </div>
+
+                </sheet>
+
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ── Kanban view ─────────────────────────────────────────────────────── -->
+    <record id="view_document_intelligence_record_kanban" model="ir.ui.view">
+        <field name="name">document.intelligence.record.kanban</field>
+        <field name="model">document.intelligence.record</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="detected_document_type"/>
+                <field name="vendor_name"/>
+                <field name="total_amount"/>
+                <field name="confidence_score"/>
+                <field name="file_name"/>
+                <field name="input_mode"/>
+                <field name="source_record_display"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_title">
+                                    <strong><field name="name"/></strong>
+                                </div>
+                                <div class="o_kanban_record_subtitle">
+                                    <span class="text-muted">
+                                        <field name="detected_document_type"/>
+                                    </span>
+                                    <span class="badge badge-pill bg-secondary ms-2"
+                                          t-if="record.input_mode.raw_value == 'existing'">
+                                        From Odoo
+                                    </span>
+                                </div>
+                                <div t-if="record.vendor_name.raw_value">
+                                    <i class="fa fa-building-o me-1"/>
+                                    <field name="vendor_name"/>
+                                </div>
+                                <div t-if="record.total_amount.raw_value">
+                                    <i class="fa fa-money me-1"/>
+                                    <field name="total_amount"/>
+                                    <field name="currency_detected"/>
+                                </div>
+                                <div t-if="record.source_record_display.raw_value"
+                                     class="text-muted small mt-1">
+                                    <i class="fa fa-link me-1"/>
+                                    <field name="source_record_display"/>
+                                </div>
+                                <div class="o_kanban_record_bottom mt-2">
+                                    <div class="oe_kanban_bottom_left">
+                                        <field name="confidence_score" widget="progressbar"
+                                               options="{'editable': false}"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ── Search view ─────────────────────────────────────────────────────── -->
+    <record id="view_document_intelligence_record_search" model="ir.ui.view">
+        <field name="name">document.intelligence.record.search</field>
+        <field name="model">document.intelligence.record</field>
+        <field name="arch" type="xml">
+            <search string="Search Documents">
+                <field name="name"/>
+                <field name="vendor_name"/>
+                <field name="reference_number"/>
+                <field name="contact_email"/>
+                <field name="source_record_display" string="Source Record"/>
+                <separator/>
+                <filter name="filter_uploaded" string="Uploaded Files"
+                        domain="[('input_mode','=','upload')]"/>
+                <filter name="filter_from_odoo" string="From Odoo Records"
+                        domain="[('input_mode','=','existing')]"/>
+                <separator/>
+                <filter name="filter_draft" string="Draft" domain="[('state','=','draft')]"/>
+                <filter name="filter_review" string="Pending Review" domain="[('state','=','review')]"/>
+                <filter name="filter_done" string="Done" domain="[('state','=','done')]"/>
+                <filter name="filter_error" string="Errors" domain="[('state','=','error')]"/>
+                <separator/>
+                <filter name="filter_invoice" string="Invoices"
+                        domain="[('detected_document_type','in',('invoice','proforma'))]"/>
+                <filter name="filter_receipt" string="Receipts"
+                        domain="[('detected_document_type','=','receipt')]"/>
+                <filter name="filter_cv" string="CVs"
+                        domain="[('detected_document_type','=','cv')]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_state" string="Status"
+                            context="{'group_by': 'state'}"/>
+                    <filter name="group_doc_type" string="Document Type"
+                            context="{'group_by': 'detected_document_type'}"/>
+                    <filter name="group_mode" string="Input Mode"
+                            context="{'group_by': 'input_mode'}"/>
+                    <filter name="group_source" string="Source Model"
+                            context="{'group_by': 'source_model'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+
+</odoo>

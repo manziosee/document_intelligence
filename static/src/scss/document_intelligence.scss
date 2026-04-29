@@ -1,0 +1,31 @@
+// Document Intelligence — backend styles
+
+.o_document_intelligence {
+
+    // Confidence bar color overrides
+    .o_progressbar_complete {
+        background-color: #28a745;
+    }
+
+    // Raw text / JSON code areas
+    .o_field_text[style*="monospace"] {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 8px;
+        min-height: 120px;
+    }
+}
+
+// Review wizard — highlight low confidence
+.o_dialog .o_field_progressbar {
+    .o_progressbar_value {
+        transition: width 0.4s ease;
+    }
+}
+
+// State badge colors
+.badge.text-bg-review {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+}

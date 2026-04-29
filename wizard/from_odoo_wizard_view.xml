@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_from_odoo_wizard_form" model="ir.ui.view">
+        <field name="name">document.intelligence.from.odoo.wizard.form</field>
+        <field name="model">document.intelligence.from.odoo.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Extract from Odoo Document">
+
+                <div class="alert alert-info" role="status">
+                    <i class="fa fa-file-text-o me-2"/>
+                    Extracting data from: <strong>
+                        <field name="source_record_name" readonly="1" nolabel="1"/>
+                    </strong>
+                </div>
+
+                <sheet>
+
+                    <group string="Select Document">
+                        <field name="available_attachment_ids" invisible="1"/>
+                        <field name="attachment_id"
+                               required="1"
+                               options="{'no_create': True}"
+                               domain="[('id', 'in', available_attachment_ids)]"
+                               help="Choose which attached file to extract data from"/>
+                    </group>
+
+                    <group string="Extraction Settings" col="2">
+                        <group>
+                            <field name="extraction_mode" widget="radio"/>
+                        </group>
+                        <group>
+                            <field name="template_id"
+                                   invisible="extraction_mode != 'template'"
+                                   required="extraction_mode == 'template'"/>
+                            <field name="custom_fields_input"
+                                   invisible="extraction_mode != 'custom'"
+                                   required="extraction_mode == 'custom'"
+                                   placeholder="vendor, date, total, phone, address"/>
+                        </group>
+                    </group>
+
+                    <group string="AI Instructions (optional)">
+                        <field name="extra_prompt" nolabel="1" colspan="2"
+                               placeholder="Example: This is a Rwandan supplier invoice. Amounts are in RWF."/>
+                    </group>
+
+                </sheet>
+
+                <footer>
+                    <button name="action_extract"
+                            string="Extract Data"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

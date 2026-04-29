@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_document_intelligence_config_form" model="ir.ui.view">
+        <field name="name">res.config.settings.document.intelligence</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <div class="app_settings_block" data-string="Document Intelligence"
+                     string="Document Intelligence" data-key="document_intelligence">
+
+                    <h2>Document Intelligence</h2>
+                    <p class="text-muted">
+                        OCR + AI data extraction from invoices, receipts, CVs and any document.
+                        Configure your AI provider and API keys below.
+                    </p>
+
+                    <div class="row mt16 o_settings_container">
+
+                        <!-- ── AI Provider ─────────────────────────────────── -->
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_ai_provider" string="AI Provider"/>
+                                <div class="text-muted">
+                                    Choose which AI service processes your documents.
+                                    Groq is faster and has a generous free tier.
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_ai_provider" widget="radio"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── OCR Language ───────────────────────────────── -->
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_tesseract_lang" string="Tesseract OCR Language"/>
+                                <div class="text-muted">
+                                    Language code(s) for Tesseract. Use <code>+</code> for multiple.
+                                    Example: <code>eng+fra+kin</code>
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_tesseract_lang" class="col-lg-6"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── OpenAI section ─────────────────────────────── -->
+                        <div class="col-12">
+                            <h3 class="mt16">OpenAI Settings
+                                <small class="text-muted ms-2"
+                                       invisible="doc_intel_ai_provider == 'openai'">(inactive)</small>
+                            </h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_openai_api_key" string="OpenAI API Key"/>
+                                <div class="text-muted">
+                                    Get your key at
+                                    <a href="https://platform.openai.com/api-keys" target="_blank">
+                                        platform.openai.com
+                                    </a>
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_openai_api_key"
+                                           class="col-lg-10" password="True"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_openai_model" string="OpenAI Model"/>
+                                <div class="text-muted">
+                                    <code>gpt-4o-mini</code> — fast &amp; cheap |
+                                    <code>gpt-4o</code> — best accuracy
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_openai_model" class="col-lg-6"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Groq section ───────────────────────────────── -->
+                        <div class="col-12">
+                            <h3 class="mt16">Groq Settings
+                                <small class="text-muted ms-2"
+                                       invisible="doc_intel_ai_provider == 'groq'">(inactive)</small>
+                            </h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_groq_api_key" string="Groq API Key"/>
+                                <div class="text-muted">
+                                    Get your key at
+                                    <a href="https://console.groq.com/keys" target="_blank">
+                                        console.groq.com
+                                    </a>
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_groq_api_key"
+                                           class="col-lg-10" password="True"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_groq_model" string="Groq Model"/>
+                                <div class="text-muted">
+                                    <code>llama-3.3-70b-versatile</code> — recommended |
+                                    <code>mixtral-8x7b-32768</code> — long documents
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_groq_model" class="col-lg-6"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Extraction default ─────────────────────────── -->
+                        <div class="col-12">
+                            <h3 class="mt16">Extraction Defaults</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_default_extraction_mode"
+                                       string="Default Extraction Mode"/>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_default_extraction_mode" widget="radio"/>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+
+</odoo>

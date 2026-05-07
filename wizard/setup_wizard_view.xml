@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_document_intelligence_setup_wizard" model="ir.ui.view">
+        <field name="name">document.intelligence.setup.wizard.form</field>
+        <field name="model">document.intelligence.setup.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Document Intelligence — Setup">
+
+                <!-- Hidden state field for visibility modifiers -->
+                <field name="step" invisible="1"/>
+                <field name="extraction_tier" invisible="1"/>
+                <field name="cloud_provider" invisible="1"/>
+                <field name="test_ok" invisible="1"/>
+
+                <sheet>
+
+                    <!-- ── STEP: Welcome ─────────────────────────────────── -->
+                    <div invisible="step != 'welcome'">
+                        <div class="text-center mb16">
+                            <h2>Welcome to Document Intelligence</h2>
+                            <p class="text-muted" style="font-size:15px;">
+                                This module extracts data from invoices, receipts, CVs and any document
+                                — saving hours of manual data entry.
+                            </p>
+                        </div>
+                        <div class="row">
+                            <div class="col-4 text-center p16">
+                                <span class="fa fa-3x fa-file-text-o text-success"/>
+                                <h4 class="mt8">Rule-Based</h4>
+                                <p class="text-muted">Works now, zero setup, free forever</p>
+                            </div>
+                            <div class="col-4 text-center p16">
+                                <span class="fa fa-3x fa-server text-info"/>
+                                <h4 class="mt8">Local AI</h4>
+                                <p class="text-muted">Private, free, runs on your server</p>
+                            </div>
+                            <div class="col-4 text-center p16">
+                                <span class="fa fa-3x fa-cloud text-primary"/>
+                                <h4 class="mt8">Cloud AI</h4>
+                                <p class="text-muted">Highest accuracy, API key needed</p>
+                            </div>
+                        </div>
+                        <p class="text-muted text-center mt8">
+                            Click <strong>Next</strong> to choose how your documents will be processed.
+                            You can change this at any time in <em>Settings → Document Intelligence</em>.
+                        </p>
+                    </div>
+
+                    <!-- ── STEP: Choose Tier ──────────────────────────────── -->
+                    <div invisible="step != 'tier'">
+                        <h3>How should documents be processed?</h3>
+                        <group>
+                            <field name="extraction_tier" widget="radio" nolabel="1"/>
+                        </group>
+                        <!-- Descriptions per tier -->
+                        <div class="alert alert-success mt8"
+                             invisible="extraction_tier != 'rule_based'">
+                            <strong>Best choice to get started.</strong>
+                            Extracts amounts, dates, emails, phone numbers, VAT numbers and vendor names
+                            using smart patterns. No internet, no account, no cost — ever.
+                        </div>
+                        <div class="alert alert-info mt8"
+                             invisible="extraction_tier != 'ollama'">
+                            <strong>Run AI on your own machine — 100% private.</strong>
+                            Install <a href="https://ollama.com" target="_blank">Ollama</a> (free),
+                            then run <code>ollama pull llama3</code> in your terminal.
+                            Works offline. No data leaves your server.
+                        </div>
+                        <div class="alert alert-warning mt8"
+                             invisible="extraction_tier != 'cloud'">
+                            <strong>Best accuracy for complex documents.</strong>
+                            Requires an API key from Groq, OpenAI, or Anthropic.
+                            <strong>Groq has a free tier</strong> — sign up at
+                            <a href="https://console.groq.com/keys" target="_blank">console.groq.com</a>
+                            in under 2 minutes.
+                        </div>
+                    </div>
+
+                    <!-- ── STEP: Configure ────────────────────────────────── -->
+                    <div invisible="step != 'configure'">
+
+                        <!-- Ollama config -->
+                        <div invisible="extraction_tier != 'ollama'">
+                            <h3>Local AI — Ollama Configuration</h3>
+                            <div class="alert alert-info">
+                                1. Install Ollama from <a href="https://ollama.com" target="_blank">ollama.com</a><br/>
+                                2. Open a terminal and run: <code>ollama pull llama3</code><br/>
+                                3. Confirm the URL below matches where Ollama is running, then click Test.
+                            </div>
+                            <group>
+                                <field name="ollama_url" string="Ollama URL"/>
+                                <field name="ollama_model" string="Model Name"/>
+                            </group>
+                        </div>
+
+                        <!-- Cloud config -->
+                        <div invisible="extraction_tier != 'cloud'">
+                            <h3>Cloud AI Configuration</h3>
+                            <group>
+                                <field name="cloud_provider" widget="radio" string="Provider"/>
+                            </group>
+
+                            <!-- Groq -->
+                            <group invisible="cloud_provider != 'groq'">
+                                <div class="text-muted mb8">
+                                    Get a free key at
+                                    <a href="https://console.groq.com/keys" target="_blank">
+                                        console.groq.com
+                                    </a> — takes 2 minutes.
+                                </div>
+                                <field name="groq_api_key" string="Groq API Key" password="True"/>
+                            </group>
+
+                            <!-- OpenAI -->
+                            <group invisible="cloud_provider != 'openai'">
+                                <div class="text-muted mb8">
+                                    Get a key at
+                                    <a href="https://platform.openai.com/api-keys" target="_blank">
+                                        platform.openai.com
+                                    </a>
+                                </div>
+                                <field name="openai_api_key" string="OpenAI API Key" password="True"/>
+                            </group>
+
+                            <!-- Anthropic -->
+                            <group invisible="cloud_provider != 'anthropic'">
+                                <div class="text-muted mb8">
+                                    Get a key at
+                                    <a href="https://console.anthropic.com/" target="_blank">
+                                        console.anthropic.com
+                                    </a>
+                                </div>
+                                <field name="anthropic_api_key" string="Anthropic API Key" password="True"/>
+                            </group>
+                        </div>
+
+                        <!-- Test connection -->
+                        <div class="mt16">
+                            <button name="action_test_connection" type="object"
+                                    string="Test Connection" class="btn-secondary"/>
+                            <div class="alert alert-success mt8"
+                                 invisible="not test_ok or not test_result">
+                                <span class="fa fa-check"/>
+                                <field name="test_result" readonly="1" nolabel="1"/>
+                            </div>
+                            <div class="alert alert-danger mt8"
+                                 invisible="test_ok or not test_result">
+                                <span class="fa fa-times"/>
+                                <field name="test_result" readonly="1" nolabel="1"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── STEP: Done ─────────────────────────────────────── -->
+                    <div invisible="step != 'done'" class="text-center">
+                        <span class="fa fa-4x fa-check-circle text-success mt16"/>
+                        <h2 class="mt16">You're all set!</h2>
+                        <p class="text-muted" style="font-size:15px;">
+                            Document Intelligence is ready to use.
+                        </p>
+                        <div class="alert alert-light text-left mt16"
+                             invisible="extraction_tier != 'rule_based'">
+                            <strong>Rule-Based mode active.</strong><br/>
+                            Go to <em>Document Intelligence → Documents → New</em> and upload any invoice, receipt or CV.
+                            Upgrade to Local AI or Cloud AI any time in <em>Settings → Document Intelligence</em>.
+                        </div>
+                        <div class="alert alert-light text-left mt16"
+                             invisible="extraction_tier != 'ollama'">
+                            <strong>Local AI (Ollama) mode active.</strong><br/>
+                            Make sure Ollama is running and your model is pulled before extracting documents.
+                        </div>
+                        <div class="alert alert-light text-left mt16"
+                             invisible="extraction_tier != 'cloud'">
+                            <strong>Cloud AI mode active.</strong><br/>
+                            Your API key has been saved. Try extracting a document from
+                            <em>Document Intelligence → Documents → New</em>.
+                        </div>
+                    </div>
+
+                </sheet>
+
+                <footer>
+                    <!-- Welcome step -->
+                    <button name="action_next" type="object" string="Next →"
+                            class="btn-primary"
+                            invisible="step != 'welcome'"/>
+
+                    <!-- Tier step -->
+                    <button name="action_next" type="object" string="Next →"
+                            class="btn-primary"
+                            invisible="step != 'tier'"/>
+                    <button name="action_back" type="object" string="← Back"
+                            class="btn-secondary"
+                            invisible="step != 'tier'"/>
+
+                    <!-- Configure step -->
+                    <button name="action_next" type="object" string="Next →"
+                            class="btn-primary"
+                            invisible="step != 'configure'"/>
+                    <button name="action_back" type="object" string="← Back"
+                            class="btn-secondary"
+                            invisible="step != 'configure'"/>
+
+                    <!-- Done step -->
+                    <button name="action_save_and_finish" type="object"
+                            string="Finish &amp; Start Using"
+                            class="btn-primary"
+                            invisible="step != 'done'"/>
+                    <button name="action_back" type="object" string="← Back"
+                            class="btn-secondary"
+                            invisible="step != 'done'"/>
+
+                    <button string="Skip for now" class="btn-link"
+                            special="cancel"
+                            invisible="step == 'done'"/>
+                </footer>
+
+            </form>
+        </field>
+    </record>
+
+    <!-- Action to open the wizard (used by post_init_hook and menu) -->
+    <record id="action_document_intelligence_setup_wizard" model="ir.actions.act_window">
+        <field name="name">Document Intelligence Setup</field>
+        <field name="res_model">document.intelligence.setup.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

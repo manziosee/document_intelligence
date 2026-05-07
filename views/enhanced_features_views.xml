@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ========================================
+         BATCH PROCESSING VIEWS
+         ======================================== -->
+
+    <record id="view_document_intelligence_batch_form" model="ir.ui.view">
+        <field name="name">document.intelligence.batch.form</field>
+        <field name="model">document.intelligence.batch</field>
+        <field name="arch" type="xml">
+            <form string="Processing Batch">
+                <header>
+                    <button name="action_process_batch" string="Process Batch" type="object"
+                            class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_open_grid_review" string="Grid Review" type="object"
+                            class="btn-secondary"
+                            invisible="state != 'processing' or not enable_grid_review or needs_review_count == 0"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,processing,done,cancelled"/>
+                </header>
+                <sheet>
+                    <!-- Fields required by modifiers but not shown directly -->
+                    <field name="enable_grid_review" invisible="1"/>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="state" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="extraction_mode"/>
+                            <field name="template_id" invisible="extraction_mode != 'template'"/>
+                            <field name="custom_fields_input" invisible="extraction_mode != 'custom'"/>
+                            <field name="extra_prompt"/>
+                        </group>
+                    </group>
+                    <group string="Scheduling" invisible="state != 'draft'">
+                        <field name="scheduled_date"/>
+                        <field name="is_recurring"/>
+                        <field name="recurrence_interval" invisible="not is_recurring"/>
+                    </group>
+                    <group string="Documents">
+                        <field name="document_count" readonly="1"/>
+                    </group>
+                    <field name="document_ids" nolabel="1" colspan="2">
+                        <tree string="Batch Documents">
+                            <field name="name"/>
+                            <field name="state"/>
+                            <field name="detected_document_type"/>
+                            <field name="confidence_score" widget="progressbar"/>
+                        </tree>
+                    </field>
+                    <notebook>
+                        <page string="Summary" name="summary">
+                            <group>
+                                <field name="success_count" readonly="1"/>
+                                <field name="error_count" readonly="1"/>
+                                <field name="needs_review_count" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_document_intelligence_batch_tree" model="ir.ui.view">
+        <field name="name">document.intelligence.batch.tree</field>
+        <field name="model">document.intelligence.batch</field>
+        <field name="arch" type="xml">
+            <tree string="Batches" decoration-info="state == 'draft'" 
+                  decoration-warning="state == 'processing'" 
+                  decoration-success="state == 'done'">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="document_count"/>
+                <field name="success_count"/>
+                <field name="error_count"/>
+                <field name="needs_review_count"/>
+                <field name="create_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_document_intelligence_batch" model="ir.actions.act_window">
+        <field name="name">Processing Batches</field>
+        <field name="res_model">document.intelligence.batch</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{}</field>
+    </record>
+
+    <!-- ========================================
+         EMAIL SCHEDULE VIEWS
+         ======================================== -->
+
+    <record id="view_document_intelligence_email_schedule_form" model="ir.ui.view">
+        <field name="name">document.intelligence.email.schedule.form</field>
+        <field name="model">document.intelligence.email.schedule</field>
+        <field name="arch" type="xml">
+            <form string="Email Processing Schedule">
+                <header>
+                    <button name="action_run_now" string="Run Now" type="object"
+                            class="btn-primary" confirm="Process emails immediately?"/>
+                    <field name="active" widget="switch"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="fetchmail_server_id"/>
+                            <field name="folder_path"/>
+                        </group>
+                        <group>
+                            <field name="sender_domain"/>
+                            <field name="subject_contains"/>
+                            <field name="attachment_types"/>
+                        </group>
+                    </group>
+                    <group string="Processing Options">
+                        <field name="batch_id"/>
+                        <field name="create_partners"/>
+                        <field name="auto_approve"/>
+                    </group>
+                    <group string="Schedule">
+                        <field name="interval_type"/>
+                        <field name="interval_number"/>
+                    </group>
+                    <group string="Statistics" invisible="not last_run">
+                        <field name="last_run" readonly="1"/>
+                        <field name="last_success" readonly="1"/>
+                        <field name="total_processed" readonly="1"/>
+                        <field name="success_count" readonly="1"/>
+                        <field name="error_count" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_document_intelligence_email_schedule_tree" model="ir.ui.view">
+        <field name="name">document.intelligence.email.schedule.tree</field>
+        <field name="model">document.intelligence.email.schedule</field>
+        <field name="arch" type="xml">
+            <tree string="Email Schedules" decoration-success="active" decoration-muted="not active">
+                <field name="name"/>
+                <field name="fetchmail_server_id"/>
+                <field name="active" widget="boolean_toggle"/>
+                <field name="interval_type"/>
+                <field name="interval_number"/>
+                <field name="last_run"/>
+                <field name="total_processed"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_document_intelligence_email_schedule" model="ir.actions.act_window">
+        <field name="name">Email Processing Schedules</field>
+        <field name="res_model">document.intelligence.email.schedule</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ========================================
+         CUSTOM EXTRACTION RULES VIEWS
+         ======================================== -->
+
+    <record id="view_document_intelligence_custom_rule_form" model="ir.ui.view">
+        <field name="name">document.intelligence.custom.rule.form</field>
+        <field name="model">document.intelligence.custom.rule</field>
+        <field name="arch" type="xml">
+            <form string="Custom Extraction Rule">
+                <header>
+                    <button name="action_apply_rule" string="Test Rule" type="object" class="btn-secondary"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="active" widget="switch"/>
+                            <field name="document_type"/>
+                            <field name="target_field"/>
+                        </group>
+                        <group>
+                            <field name="pattern_type"/>
+                            <field name="vendor_ids" widget="many2many_tags"/>
+                        </group>
+                    </group>
+                    <group string="Pattern Definition" invisible="not active">
+                        <group>
+                            <field name="regex_pattern" invisible="pattern_type != 'regex'"
+                                   widget="text" colspan="4" placeholder="(?P&lt;invoice_number&gt;INV-[0-9]+)"/>
+                        </group>
+                        <group>
+                            <field name="before_text" invisible="pattern_type != 'zapier'"/>
+                            <field name="after_text" invisible="pattern_type != 'zapier'"/>
+                        </group>
+                        <group>
+                            <field name="page_number" invisible="pattern_type != 'position'"/>
+                            <field name="line_position" invisible="pattern_type != 'position'"/>
+                        </group>
+                    </group>
+                    <group string="Post-Processing &amp; Validation">
+                        <field name="post_processing"/>
+                        <field name="validation_regex" placeholder="Optional validation pattern"/>
+                        <field name="error_message"/>
+                    </group>
+                    <group string="Statistics" invisible="not usage_count">
+                        <field name="usage_count" readonly="1"/>
+                        <field name="success_count" readonly="1"/>
+                        <field name="accuracy_rate" readonly="1" widget="percentage"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_document_intelligence_custom_rule_tree" model="ir.ui.view">
+        <field name="name">document.intelligence.custom.rule.tree</field>
+        <field name="model">document.intelligence.custom.rule</field>
+        <field name="arch" type="xml">
+            <tree string="Custom Rules" decoration-success="active" decoration-muted="not active">
+                <field name="name"/>
+                <field name="document_type"/>
+                <field name="target_field"/>
+                <field name="pattern_type"/>
+                <field name="active" widget="boolean_toggle"/>
+                <field name="usage_count"/>
+                <field name="accuracy_rate" widget="percentage"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_document_intelligence_custom_rule" model="ir.actions.act_window">
+        <field name="name">Custom Extraction Rules</field>
+        <field name="res_model">document.intelligence.custom.rule</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ========================================
+         AUDIT REPORT VIEWS
+         ======================================== -->
+
+    <record id="view_document_intelligence_audit_report_form" model="ir.ui.view">
+        <field name="name">document.intelligence.audit.report.form</field>
+        <field name="model">document.intelligence.audit.report</field>
+        <field name="arch" type="xml">
+            <form string="Audit Report">
+                <header>
+                    <button name="action_generate_report" string="Regenerate" type="object" class="btn-primary"/>
+                    <button name="action_export_csv" string="Export CSV" type="object" class="btn-secondary"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="report_type"/>
+                            <field name="report_date"/>
+                        </group>
+                        <group>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="user_id"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="partner_id"/>
+                        <field name="document_type"/>
+                    </group>
+                    <group string="Summary Metrics">
+                        <field name="total_documents" readonly="1"/>
+                        <field name="successful_extractions" readonly="1"/>
+                        <field name="failed_extractions" readonly="1"/>
+                        <field name="avg_confidence" readonly="1" widget="percentage"/>
+                        <field name="total_cost_usd" readonly="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Daily Breakdown" name="daily">
+                            <field name="daily_breakdown" readonly="1" nolabel="1" widget="text"
+                                   style="font-family: monospace; font-size: 12px;"/>
+                        </page>
+                        <page string="Top Vendors" name="vendors">
+                            <field name="top_vendors" readonly="1" nolabel="1" widget="text"
+                                   style="font-family: monospace; font-size: 12px;"/>
+                        </page>
+                        <page string="Error Summary" name="errors">
+                            <field name="error_summary" readonly="1" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_document_intelligence_audit_report_tree" model="ir.ui.view">
+        <field name="name">document.intelligence.audit.report.tree</field>
+        <field name="model">document.intelligence.audit.report</field>
+        <field name="arch" type="xml">
+            <tree string="Audit Reports">
+                <field name="name"/>
+                <field name="report_type"/>
+                <field name="report_date"/>
+                <field name="date_from"/>
+                <field name="date_to"/>
+                <field name="total_documents"/>
+                <field name="total_cost_usd"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ========================================
+         GRID REVIEW WIZARD VIEWS
+         ======================================== -->
+
+    <record id="view_document_intelligence_batch_review_wizard_form" model="ir.ui.view">
+        <field name="name">document.intelligence.batch.review.wizard.form</field>
+        <field name="model">document.intelligence.batch.review.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Batch Grid Review">
+                <sheet>
+                    <group>
+                        <field name="total_amount_sum" readonly="1"/>
+                        <field name="avg_confidence" readonly="1" widget="percentage"/>
+                    </group>
+                    <group>
+                        <label for="bulk_action" string="Bulk Action"/>
+                        <field name="bulk_action"/>
+                    </group>
+                    <group invisible="bulk_action != 'update_partner'">
+                        <field name="new_partner_id"/>
+                    </group>
+                    <group invisible="bulk_action != 'set_tax'">
+                        <field name="new_tax_id"/>
+                    </group>
+
+                    <notebook>
+                        <page string="Documents to Review" name="docs">
+                            <field name="document_ids" nolabel="1" widget="many2many" options="{'no_create': True}">
+                                <tree string="Documents" editable="false">
+                                    <field name="name"/>
+                                    <field name="detected_document_type"/>
+                                    <field name="vendor_name"/>
+                                    <field name="partner_id"/>
+                                    <field name="total_amount" widget="monetary"/>
+                                    <field name="currency_detected"/>
+                                    <field name="confidence_score" widget="progressbar"/>
+                                    <field name="document_date"/>
+                                    <field name="suggested_action"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+
+                    <footer>
+                        <button name="action_bulk_approve" string="Approve All" type="object"
+                                class="btn-primary" invisible="bulk_action != 'approve_all'"/>
+                        <button name="action_bulk_approve" string="Update &amp; Approve" type="object"
+                                class="btn-primary" invisible="bulk_action not in ('update_partner', 'set_tax')"/>
+                        <button name="action_bulk_reject" string="Reject All" type="object"
+                                class="btn-secondary" confirm="Reject all documents in this batch?"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ========================================
+         BANK MATCH WIZARD VIEWS
+         ======================================== -->
+
+    <record id="view_document_intelligence_bank_match_wizard_form" model="ir.ui.view">
+        <field name="name">document.intelligence.bank.match.wizard.form</field>
+        <field name="model">document.intelligence.bank.match.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Match Bank Statement">
+                <group>
+                    <field name="candidate_line_ids" readonly="1" nolabel="1" widget="many2many_tags"/>
+                </group>
+                <group>
+                    <field name="selected_line_id" required="1"/>
+                </group>
+                <footer>
+                    <button string="Match" type="object" name="action_match" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

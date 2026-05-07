@@ -9,10 +9,48 @@
         <field name="view_mode">tree,kanban,form</field>
     </record>
 
+    <record id="action_document_intelligence_batch" model="ir.actions.act_window">
+        <field name="name">Processing Batches</field>
+        <field name="res_model">document.intelligence.batch</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
     <record id="action_document_intelligence_template" model="ir.actions.act_window">
         <field name="name">Extraction Templates</field>
         <field name="res_model">document.intelligence.template</field>
         <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_document_intelligence_email_schedule" model="ir.actions.act_window">
+        <field name="name">Email Processing Schedules</field>
+        <field name="res_model">document.intelligence.email.schedule</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_document_intelligence_custom_rule" model="ir.actions.act_window">
+        <field name="name">Custom Extraction Rules</field>
+        <field name="res_model">document.intelligence.custom.rule</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_document_intelligence_audit_report" model="ir.actions.act_window">
+        <field name="name">Audit &amp; Compliance Reports</field>
+        <field name="res_model">document.intelligence.audit.report</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_document_intelligence_quota_log" model="ir.actions.act_window">
+        <field name="name">API Quota Log</field>
+        <field name="res_model">document.intelligence.quota.log</field>
+        <field name="view_mode">tree</field>
+    </record>
+
+    <record id="action_document_intelligence_error_log" model="ir.actions.act_window">
+        <field name="name">Error Log</field>
+        <field name="res_model">document.intelligence.error.log</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('resolved','=',False)]</field>
+        <field name="context">{'search_default_filter_unresolved': 1}</field>
     </record>
 
     <record id="action_document_intelligence_config" model="ir.actions.act_window">
@@ -39,6 +77,16 @@
         action="action_document_intelligence_record"
     />
 
+    <!-- Batch Processing -->
+    <menuitem
+        id="menu_document_intelligence_batch"
+        name="Batch Processing"
+        parent="menu_document_intelligence_root"
+        sequence="15"
+        action="action_document_intelligence_batch"
+        groups="base.group_system"
+    />
+
     <!-- Templates -->
     <menuitem
         id="menu_document_intelligence_templates"
@@ -48,7 +96,58 @@
         action="action_document_intelligence_template"
     />
 
-    <!-- Configuration -->
+    <!-- Email Integration -->
+    <menuitem
+        id="menu_document_intelligence_email"
+        name="Email Integration"
+        parent="menu_document_intelligence_root"
+        sequence="25"
+        action="action_document_intelligence_email_schedule"
+    />
+
+    <!-- Custom Rules -->
+    <menuitem
+        id="menu_document_intelligence_rules"
+        name="Custom Rules"
+        parent="menu_document_intelligence_root"
+        sequence="30"
+        action="action_document_intelligence_custom_rule"
+    />
+
+    <!-- Reporting sub-menu -->
+    <menuitem
+        id="menu_document_intelligence_reporting"
+        name="Reporting"
+        parent="menu_document_intelligence_root"
+        sequence="80"
+        groups="base.group_system"
+    />
+
+    <menuitem
+        id="menu_document_intelligence_audit_reports"
+        name="Audit &amp; Compliance"
+        parent="menu_document_intelligence_reporting"
+        sequence="5"
+        action="action_document_intelligence_audit_report"
+    />
+
+    <menuitem
+        id="menu_document_intelligence_quota_log"
+        name="API Quota Log"
+        parent="menu_document_intelligence_reporting"
+        sequence="10"
+        action="action_document_intelligence_quota_log"
+    />
+
+    <menuitem
+        id="menu_document_intelligence_error_log"
+        name="Error Dashboard"
+        parent="menu_document_intelligence_reporting"
+        sequence="20"
+        action="action_document_intelligence_error_log"
+    />
+
+    <!-- Configuration sub-menu -->
     <menuitem
         id="menu_document_intelligence_config"
         name="Configuration"

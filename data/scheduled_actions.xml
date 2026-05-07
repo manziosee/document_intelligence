@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Scheduled Action: Periodic Email Processing -->
+    <record id="ir_cron_document_intelligence_email_processing" model="ir.cron">
+        <field name="name">DI: Process Scheduled Email Attachments</field>
+        <field name="model_id" ref="model_document_intelligence_email_schedule"/>
+        <field name="state">code</field>
+        <field name="code">
+            model.search([('active', '=', True)])._process_email_schedule()
+        </field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">hours</field>
+        <field name="numbercall">-1</field>
+        <field name="active">False</field>
+    </record>
+
+    <!-- Scheduled Action: Auto-Cleanup Old Records -->
+    <record id="ir_cron_document_intelligence_cleanup" model="ir.cron">
+        <field name="name">DI: Auto-Cleanup Old Documents</field>
+        <field name="model_id" ref="model_document_intelligence_record"/>
+        <field name="state">code</field>
+        <field name="code">
+            model._scheduled_auto_cleanup()
+        </field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">False</field>
+    </record>
+
+    <!-- Scheduled Action: Generate Monthly Audit Reports -->
+    <record id="ir_cron_document_intelligence_monthly_report" model="ir.cron">
+        <field name="name">DI: Generate Monthly Compliance Report</field>
+        <field name="model_id" ref="model_document_intelligence_audit_report"/>
+        <field name="state">code</field>
+        <field name="code">
+            model._scheduled_generate_monthly_report()
+        </field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">months</field>
+        <field name="numbercall">-1</field>
+        <field name="active">False</field>
+    </record>
+
+</odoo>

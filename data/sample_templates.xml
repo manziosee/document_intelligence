@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <record id="template_invoice_rwanda" model="document.intelligence.template">
+        <field name="name">Rwandan Supplier Invoice</field>
+        <field name="document_type">invoice</field>
+        <field name="description">Standard invoice from Rwandan suppliers. Amounts in RWF, VAT 18%.</field>
+        <field name="fields_to_extract">vendor_name
+reference_number
+document_date
+total_amount
+tax_amount
+currency
+vat_number
+contact_address
+contact_phone
+contact_email
+line_items</field>
+        <field name="prompt_hint">This is a Rwandan supplier invoice. Amounts are in RWF. VAT rate is typically 18%. Extract all line items with description, quantity, unit price and total. The vendor's TIN/VAT number may appear as "TIN:" or "VAT Reg No:".</field>
+        <field name="active">True</field>
+    </record>
+
+    <record id="template_proforma_invoice" model="document.intelligence.template">
+        <field name="name">Proforma Invoice</field>
+        <field name="document_type">invoice</field>
+        <field name="description">Proforma / quotation invoice — extract full line items for bill creation.</field>
+        <field name="fields_to_extract">vendor_name
+reference_number
+document_date
+total_amount
+tax_amount
+currency
+contact_name
+contact_address
+contact_phone
+line_items</field>
+        <field name="prompt_hint">This is a proforma invoice or quotation. Extract each line item separately with description, quantity, unit price, and subtotal. The document type is proforma.</field>
+        <field name="active">True</field>
+    </record>
+
+    <record id="template_receipt" model="document.intelligence.template">
+        <field name="name">Receipt / Expense</field>
+        <field name="document_type">receipt</field>
+        <field name="description">Shop receipt or expense receipt. For employee expense claims.</field>
+        <field name="fields_to_extract">vendor_name
+document_date
+total_amount
+tax_amount
+currency
+reference_number
+contact_address</field>
+        <field name="prompt_hint">This is a purchase receipt. Extract the store name as vendor_name, the receipt date, total paid, and any tax shown. The reference_number is the receipt or transaction number.</field>
+        <field name="active">True</field>
+    </record>
+
+    <record id="template_cv_resume" model="document.intelligence.template">
+        <field name="name">CV / Resume</field>
+        <field name="document_type">cv</field>
+        <field name="description">Candidate CV for HR applicant creation.</field>
+        <field name="fields_to_extract">contact_name
+contact_email
+contact_phone
+contact_address
+vendor_name</field>
+        <field name="prompt_hint">This is a CV or resume. Extract the candidate's full name as contact_name, their email, phone number, and current address. The vendor_name field should contain their current or most recent employer. The suggested_action must be create_applicant.</field>
+        <field name="active">True</field>
+    </record>
+
+    <record id="template_contract" model="document.intelligence.template">
+        <field name="name">Service Contract</field>
+        <field name="document_type">contract</field>
+        <field name="description">Service or supply contract — extract parties, dates, and amounts.</field>
+        <field name="fields_to_extract">vendor_name
+contact_name
+reference_number
+document_date
+total_amount
+currency
+contact_address</field>
+        <field name="prompt_hint">This is a service or supply contract. Extract the supplier/vendor name, contract reference number, start date as document_date, and total contract value as total_amount.</field>
+        <field name="active">True</field>
+    </record>
+
+</odoo>

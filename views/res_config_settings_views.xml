@@ -16,16 +16,103 @@
                         Configure your AI provider and API keys below.
                     </p>
 
+                    <!-- Hidden fields needed for invisible modifiers -->
+                    <field name="doc_intel_extraction_tier" invisible="1"/>
+                    <field name="doc_intel_ai_provider" invisible="1"/>
+
                     <div class="row mt16 o_settings_container">
 
-                        <!-- ── AI Provider ─────────────────────────────────── -->
-                        <div class="col-12 col-lg-6 o_setting_box">
+                        <!-- ── Extraction Tier ────────────────────────────── -->
+                        <div class="col-12">
+                            <h3>Extraction Method</h3>
+                        </div>
+
+                        <div class="col-12 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_ai_provider" string="AI Provider"/>
+                                <label for="doc_intel_extraction_tier" string="How should documents be processed?"/>
+                                <div class="text-muted mb8">
+                                    <strong>Rule-Based</strong> works immediately with no setup — great for getting started.
+                                    Upgrade to <strong>Local AI</strong> (Ollama, free) or <strong>Cloud AI</strong> when you need higher accuracy.
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_extraction_tier" widget="radio"/>
+                                </div>
+                                <!-- Tier 1 info banner -->
+                                <div class="alert alert-success mt8"
+                                     invisible="doc_intel_extraction_tier != 'rule_based'">
+                                    <strong>Ready to use!</strong>
+                                    No API key or internet connection needed. Extracts amounts, dates, emails,
+                                    phone numbers, vendor names and reference numbers using smart patterns.
+                                    Accuracy: ~70-80% on structured invoices.
+                                </div>
+                                <!-- Tier 2 info banner -->
+                                <div class="alert alert-info mt8"
+                                     invisible="doc_intel_extraction_tier != 'ollama'">
+                                    <strong>Local AI via Ollama</strong> — free and private.
+                                    Install Ollama from <a href="https://ollama.com" target="_blank">ollama.com</a>,
+                                    then run: <code>ollama pull llama3</code>. Configure the URL and model below.
+                                </div>
+                                <!-- Tier 3 info banner -->
+                                <div class="alert alert-warning mt8"
+                                     invisible="doc_intel_extraction_tier != 'cloud'">
+                                    <strong>Cloud AI</strong> — highest accuracy, requires an API key.
+                                    <strong>Groq</strong> has a generous free tier —
+                                    get a key in 2 minutes at
+                                    <a href="https://console.groq.com/keys" target="_blank">console.groq.com</a>.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Ollama section (Tier 2) ────────────────────── -->
+                        <div class="col-12"
+                             invisible="doc_intel_extraction_tier != 'ollama'">
+                            <h3 class="mt16">Local AI — Ollama Settings</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'ollama'">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_ollama_url" string="Ollama Server URL"/>
                                 <div class="text-muted">
-                                    Choose which AI service processes your documents.
-                                    Groq is faster and has a generous free tier.
+                                    Where Ollama is running. Default is
+                                    <code>http://localhost:11434</code> for local installs.
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_ollama_url" class="col-lg-10"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'ollama'">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_ollama_model" string="Ollama Model"/>
+                                <div class="text-muted">
+                                    Any model you pulled with <code>ollama pull</code>.
+                                    Recommended: <code>llama3</code>, <code>mistral</code>, <code>qwen2</code>
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_ollama_model" class="col-lg-6"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Cloud AI section (Tier 3) ──────────────────── -->
+                        <div class="col-12"
+                             invisible="doc_intel_extraction_tier != 'cloud'">
+                            <h3 class="mt16">Cloud AI Provider</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud'">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_ai_provider" string="Cloud AI Provider"/>
+                                <div class="text-muted">
+                                    Groq is fastest with a free tier. OpenAI and Anthropic offer the highest accuracy.
                                 </div>
                                 <div class="content-group mt8">
                                     <field name="doc_intel_ai_provider" widget="radio"/>
@@ -33,30 +120,53 @@
                             </div>
                         </div>
 
-                        <!-- ── OCR Language ───────────────────────────────── -->
-                        <div class="col-12 col-lg-6 o_setting_box">
+                        <!-- ── Groq keys ───────────────────────────────────── -->
+                        <div class="col-12"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'groq'">
+                            <h3 class="mt16">Groq Settings</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'groq'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_tesseract_lang" string="Tesseract OCR Language"/>
+                                <label for="doc_intel_groq_api_key" string="Groq API Key"/>
                                 <div class="text-muted">
-                                    Language code(s) for Tesseract. Use <code>+</code> for multiple.
-                                    Example: <code>eng+fra+kin</code>
+                                    Free tier available — get your key at
+                                    <a href="https://console.groq.com/keys" target="_blank">
+                                        console.groq.com
+                                    </a>
                                 </div>
                                 <div class="content-group mt8">
-                                    <field name="doc_intel_tesseract_lang" class="col-lg-6"/>
+                                    <field name="doc_intel_groq_api_key"
+                                           class="col-lg-10" password="True"/>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- ── OpenAI section ─────────────────────────────── -->
-                        <div class="col-12">
-                            <h3 class="mt16">OpenAI Settings
-                                <small class="text-muted ms-2"
-                                       invisible="doc_intel_ai_provider == 'openai'">(inactive)</small>
-                            </h3>
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'groq'">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_groq_model" string="Groq Model"/>
+                                <div class="text-muted">
+                                    <code>llama-3.3-70b-versatile</code> — recommended |
+                                    <code>mixtral-8x7b-32768</code> — long documents
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_groq_model" class="col-lg-6"/>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="col-12 col-lg-6 o_setting_box">
+                        <!-- ── OpenAI keys ─────────────────────────────────── -->
+                        <div class="col-12"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'openai'">
+                            <h3 class="mt16">OpenAI Settings</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'openai'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
                                 <label for="doc_intel_openai_api_key" string="OpenAI API Key"/>
@@ -73,7 +183,8 @@
                             </div>
                         </div>
 
-                        <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'openai'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
                                 <label for="doc_intel_openai_model" string="OpenAI Model"/>
@@ -87,46 +198,66 @@
                             </div>
                         </div>
 
-                        <!-- ── Groq section ───────────────────────────────── -->
-                        <div class="col-12">
-                            <h3 class="mt16">Groq Settings
-                                <small class="text-muted ms-2"
-                                       invisible="doc_intel_ai_provider == 'groq'">(inactive)</small>
-                            </h3>
+                        <!-- ── Anthropic keys ──────────────────────────────── -->
+                        <div class="col-12"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'anthropic'">
+                            <h3 class="mt16">Anthropic (Claude) Settings</h3>
                         </div>
 
-                        <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'anthropic'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_groq_api_key" string="Groq API Key"/>
+                                <label for="doc_intel_anthropic_api_key" string="Anthropic API Key"/>
                                 <div class="text-muted">
                                     Get your key at
-                                    <a href="https://console.groq.com/keys" target="_blank">
-                                        console.groq.com
+                                    <a href="https://console.anthropic.com/" target="_blank">
+                                        console.anthropic.com
                                     </a>
                                 </div>
                                 <div class="content-group mt8">
-                                    <field name="doc_intel_groq_api_key"
+                                    <field name="doc_intel_anthropic_api_key"
                                            class="col-lg-10" password="True"/>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="col-12 col-lg-6 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'anthropic'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_groq_model" string="Groq Model"/>
+                                <label for="doc_intel_anthropic_model" string="Anthropic Model"/>
                                 <div class="text-muted">
-                                    <code>llama-3.3-70b-versatile</code> — recommended |
-                                    <code>mixtral-8x7b-32768</code> — long documents
+                                    <code>claude-haiku-4-5-20251001</code> — fast &amp; cheap |
+                                    <code>claude-sonnet-4-6</code> — balanced
                                 </div>
                                 <div class="content-group mt8">
-                                    <field name="doc_intel_groq_model" class="col-lg-6"/>
+                                    <field name="doc_intel_anthropic_model" class="col-lg-6"/>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- ── Extraction default ─────────────────────────── -->
+                        <!-- ── OCR Language ───────────────────────────────── -->
+                        <div class="col-12">
+                            <h3 class="mt16">OCR Settings</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_tesseract_lang" string="Tesseract OCR Language"/>
+                                <div class="text-muted">
+                                    Language code(s) for Tesseract. Use <code>+</code> for multiple.
+                                    Example: <code>eng+fra+kin</code>.
+                                    Leave blank if Tesseract is not installed (AI providers read files directly).
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_tesseract_lang" class="col-lg-6"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Extraction defaults ────────────────────────── -->
                         <div class="col-12">
                             <h3 class="mt16">Extraction Defaults</h3>
                         </div>
@@ -142,11 +273,541 @@
                             </div>
                         </div>
 
-                    </div>
+                        <!-- ── Batch &amp; Quota ──────────────────────────── -->
+                        <div class="col-12">
+                            <h3 class="mt16">Batch Processing &amp; Quota</h3>
+                        </div>
+
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label for="doc_intel_batch_size" string="Batch Processing Size"/>
+                                <div class="text-muted">
+                                    Max documents to process in a single batch operation.
+                                </div>
+                                <div class="content-group mt8">
+                                    <field name="doc_intel_batch_size" class="col-lg-4"/>
+                                </div>
+                            </div>
+                        </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_quota_warning_threshold"
+                                        string="Quota Warning Threshold (tokens/day)"/>
+                                 <div class="text-muted">
+                                     Log a warning when daily token usage exceeds this value.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_quota_warning_threshold" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── Auto-Approval Rules ────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Auto-Approval Rules</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_enable_auto_approval" string="Enable Auto-Approval"/>
+                                 <div class="text-muted">
+                                     Automatically create vendor bills without manual review if confidence and amount conditions are met.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_enable_auto_approval" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_approval_confidence" string="Min Confidence %"/>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_approval_confidence" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_approval_amount" string="Max Amount for Auto-Approval"/>
+                                 <div class="text-muted">
+                                     Invoices above this amount (in company currency) require manual review.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_approval_amount" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── LINE ITEM EXTRACTION ─────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Line Item Extraction</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_enable_line_items" string="Extract Line Items"/>
+                                 <div class="text-muted">
+                                     Extract individual product lines from invoices and receipts.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_enable_line_items" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_line_item_confidence_threshold" string="Line Item Confidence Threshold"/>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_line_item_confidence_threshold" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── MULTI-CURRENCY ──────────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Multi-Currency</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_currency_conversion" string="Auto Currency Conversion"/>
+                                 <div class="text-muted">
+                                     Use Odoo's exchange rates to convert foreign currency amounts.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_currency_conversion" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_default_currency_id" string="Default Foreign Currency"/>
+                                 <div class="text-muted">
+                                     Assumed currency if detection fails (e.g., RWF for Rwanda).
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_default_currency_id" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── AUTO-CREATE PARTNERS ────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Vendor / Partner Auto-Creation</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_create_partners" string="Auto-Create Unknown Vendors"/>
+                                 <div class="text-muted">
+                                     Create a new vendor contact if the extracted vendor is not found in Odoo.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_create_partners" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── TAX / VAT DETECTION ─────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Tax / VAT Detection</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_tax_detection" string="Auto Tax Detection"/>
+                                 <div class="text-muted">
+                                     Automatically detect VAT/tax rates and apply matching account.tax records.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_tax_detection" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_default_tax_id" string="Default VAT Tax"/>
+                                 <div class="text-muted">
+                                     Default purchase tax to apply when tax is detected but not mapped.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_default_tax_id" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_tax_rate_mapping" string="Tax Rate Mapping"/>
+                                 <div class="text-muted">
+                                     JSON map: {"18": "VAT 18%", "15": "VAT 15%"}
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_tax_rate_mapping" class="col-lg-10" widget="text"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── DUPLICATE DETECTION ─────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Duplicate Detection</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_enable_duplicate_detection" string="Enable Duplicate Detection"/>
+                                 <div class="text-muted">
+                                     Prevent processing the same invoice twice via file hash.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_enable_duplicate_detection" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_duplicate_action" string="Duplicate Invoice Action"/>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_duplicate_action" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── PRODUCT MATCHING ─────────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Product Matching</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_product_match_fuzziness" string="Product Name Match Threshold %"/>
+                                 <div class="text-muted">
+                                     Minimum similarity (0-100) for fuzzy product matching.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_product_match_fuzziness" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_create_products" string="Auto-Create Unknown Products"/>
+                                 <div class="text-muted">
+                                     Create a new service product if line item description doesn't match any existing product.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_create_products" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_unknown_product_category_id" string="Category for Auto-Created Products"/>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_unknown_product_category_id" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_default_product_id" string="Default Fallback Product"/>
+                                 <div class="text-muted">
+                                     Product to use when no product match is found.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_default_product_id" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── WORKFLOW & APPROVALS ──────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Workflow &amp; Approvals</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_enable_approval_workflow" string="Enable Approval Workflow"/>
+                                 <div class="text-muted">
+                                     Route high-value invoices to managers for approval before posting.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_enable_approval_workflow" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_approval_threshold" string="Approval Threshold"/>
+                                 <div class="text-muted">
+                                     Invoices exceeding this amount require manager approval.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_approval_threshold" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_post_approved" string="Auto-Post Approved Bills"/>
+                                 <div class="text-muted">
+                                     Automatically post vendor bills after approval (skip draft).
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_post_approved" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── EXPENSES ──────────────────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Expense Claims (Receipts)</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_expense_product_id" string="Default Expense Product"/>
+                                 <div class="text-muted">
+                                     Product used for expense lines without a matched product.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_expense_product_id" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_expense_creation" string="Auto-Create Expense Claims"/>
+                                 <div class="text-muted">
+                                     Automatically create expense claims when receipt documents are approved.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_expense_creation" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── EMAIL INTEGRATION ─────────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Email Integration</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_email_inbound_enabled" string="Enable Email Inbound Processing"/>
+                                 <div class="text-muted">
+                                     Automatically process attachments from incoming emails via fetchmail.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_email_inbound_enabled" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_email_processor_user_id" string="Email Processor User"/>
+                                 <div class="text-muted">
+                                     User account used to process email attachments (requires DI permissions).
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_email_processor_user_id" class="col-lg-6"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── VALIDATION ─────────────────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Validation Rules</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_validate_dates" string="Validate Date Ranges"/>
+                                 <div class="text-muted">
+                                     Flag invoices with future dates or dates too old.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_validate_dates" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_validate_amounts" string="Validate Amount Positivity"/>
+                                 <div class="text-muted">
+                                     Ensure extracted totals and line amounts are positive numbers.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_validate_amounts" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_require_vendor" string="Require Vendor Name"/>
+                                 <div class="text-muted">
+                                     Reject documents without a detectable vendor name.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_require_vendor" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── VENDOR-SPECIFIC LEARNING ──────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Vendor Learning</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_enable_vendor_learning" string="Enable Vendor-Specific Learning"/>
+                                 <div class="text-muted">
+                                     Track extraction patterns per vendor to improve future extractions.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_enable_vendor_learning" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── EXPORT / API ───────────────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Export &amp; API Integration</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_webhook_enabled" string="Enable Webhook Notifications"/>
+                                 <div class="text-muted">
+                                     Send POST notifications to a webhook when documents are processed.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_webhook_enabled" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_webhook_url" string="Webhook URL"/>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_webhook_url" class="col-lg-10"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── STORAGE & RETENTION ───────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Storage &amp; Retention</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_keep_raw_file" string="Keep Original File"/>
+                                 <div class="text-muted">
+                                     Store the original uploaded file in Odoo attachments.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_keep_raw_file" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_auto_cleanup_days" string="Auto-Cleanup After Days"/>
+                                 <div class="text-muted">
+                                     Automatically delete DI records older than this many days (0=never).
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_auto_cleanup_days" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <!-- ── SCHEDULED EXTRACTION ──────────────────────────────────── -->
+                         <div class="col-12">
+                             <h3 class="mt16">Scheduled Extraction</h3>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_scheduled_extraction_enabled" string="Enable Scheduled Email Extraction"/>
+                                 <div class="text-muted">
+                                     Allow recurring processing of email attachments.
+                                 </div>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_scheduled_extraction_enabled" class="col-lg-2" widget="switch"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div class="col-12 col-lg-6 o_setting_box">
+                             <div class="o_setting_left_pane"/>
+                             <div class="o_setting_right_pane">
+                                 <label for="doc_intel_default_schedule_interval" string="Default Schedule Interval (hours)"/>
+                                 <div class="content-group mt8">
+                                     <field name="doc_intel_default_schedule_interval" class="col-lg-4"/>
+                                 </div>
+                             </div>
+                         </div>
+
+                     </div>
                 </div>
             </xpath>
         </field>
     </record>
-
 
 </odoo>

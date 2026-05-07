@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ── Tree view ──────────────────────────────────────────────────────── -->
+    <record id="view_doc_intel_error_log_tree" model="ir.ui.view">
+        <field name="name">document.intelligence.error.log.tree</field>
+        <field name="model">document.intelligence.error.log</field>
+        <field name="arch" type="xml">
+            <tree string="Error Log"
+                  decoration-muted="resolved"
+                  decoration-danger="not resolved">
+                <field name="error_date"/>
+                <field name="error_type"/>
+                <field name="provider" optional="show"/>
+                <field name="file_name" optional="show"/>
+                <field name="document_id" optional="show"/>
+                <field name="user_id" optional="show"/>
+                <field name="error_message"/>
+                <field name="resolved" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ── Form view ──────────────────────────────────────────────────────── -->
+    <record id="view_doc_intel_error_log_form" model="ir.ui.view">
+        <field name="name">document.intelligence.error.log.form</field>
+        <field name="model">document.intelligence.error.log</field>
+        <field name="arch" type="xml">
+            <form string="Error Detail">
+                <header>
+                    <button name="action_mark_resolved"
+                            string="Mark as Resolved"
+                            type="object"
+                            class="btn-primary"
+                            invisible="resolved"/>
+                    <button name="action_open_document"
+                            string="Open Document"
+                            type="object"
+                            invisible="not document_id"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="error_type" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group col="2">
+                        <group string="Error Info">
+                            <field name="error_date" readonly="1"/>
+                            <field name="provider" readonly="1"/>
+                            <field name="file_name" readonly="1"/>
+                            <field name="document_id" readonly="1"/>
+                        </group>
+                        <group string="Context">
+                            <field name="user_id" readonly="1"/>
+                            <field name="company_id" readonly="1"/>
+                            <field name="resolved"/>
+                        </group>
+                    </group>
+                    <group string="Error Message">
+                        <field name="error_message" readonly="1" nolabel="1" colspan="2"
+                               widget="text"
+                               style="font-family: monospace; color: #c0392b;"/>
+                    </group>
+                    <group string="Traceback" invisible="not traceback_text">
+                        <field name="traceback_text" readonly="1" nolabel="1" colspan="2"
+                               widget="text"
+                               style="font-family: monospace; font-size: 11px; white-space: pre-wrap;"/>
+                    </group>
+                    <group string="Resolution" invisible="not resolved">
+                        <field name="resolution_note" colspan="2"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ── Search view ────────────────────────────────────────────────────── -->
+    <record id="view_doc_intel_error_log_search" model="ir.ui.view">
+        <field name="name">document.intelligence.error.log.search</field>
+        <field name="model">document.intelligence.error.log</field>
+        <field name="arch" type="xml">
+            <search string="Search Errors">
+                <field name="error_type"/>
+                <field name="provider"/>
+                <field name="file_name"/>
+                <field name="error_message"/>
+                <separator/>
+                <filter name="filter_unresolved" string="Unresolved"
+                        domain="[('resolved','=',False)]"/>
+                <filter name="filter_resolved" string="Resolved"
+                        domain="[('resolved','=',True)]"/>
+                <separator/>
+                <filter name="filter_ocr" string="OCR Errors" domain="[('error_type','=','ocr')]"/>
+                <filter name="filter_ai" string="AI Errors" domain="[('error_type','=','ai')]"/>
+                <filter name="filter_quota" string="Quota Errors" domain="[('error_type','=','quota')]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_type" string="Error Type"
+                            context="{'group_by': 'error_type'}"/>
+                    <filter name="group_provider" string="Provider"
+                            context="{'group_by': 'provider'}"/>
+                    <filter name="group_date" string="Date"
+                            context="{'group_by': 'error_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+</odoo>

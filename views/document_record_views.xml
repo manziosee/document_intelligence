@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- ── List view ──────────────────────────────────────────────────────── -->
+    <!-- ── List / Tree view ───────────────────────────────────────────────── -->
     <record id="view_document_intelligence_record_list" model="ir.ui.view">
         <field name="name">document.intelligence.record.list</field>
         <field name="model">document.intelligence.record</field>
@@ -17,6 +17,7 @@
                 <field name="source_record_display" optional="show" string="Linked Record"/>
                 <field name="detected_document_type"/>
                 <field name="extraction_mode"/>
+                <field name="ocr_language" optional="hide"/>
                 <field name="confidence_score" widget="progressbar"
                        options="{'editable': false}"/>
                 <field name="vendor_name"/>
@@ -52,77 +53,110 @@
                             type="object"
                             class="btn-primary"
                             invisible="state != 'review'"/>
-                    <button name="action_create_odoo_record"
-                            string="Create Odoo Record"
-                            type="object"
-                            class="btn-secondary"
-                            invisible="state != 'review'"
-                            confirm="Create the Odoo record now without reviewing again?"/>
-                    <button name="action_reset_to_draft"
-                            string="Reset to Draft"
-                            type="object"
-                            invisible="state in ('draft', 'done')"/>
+                     <button name="action_create_odoo_record"
+                             string="Create Odoo Record"
+                             type="object"
+                             class="btn-secondary"
+                             invisible="state != 'review'"
+                             confirm="Create the Odoo record now without reviewing again?"/>
+                     <button name="action_create_expense_claim"
+                             string="Create Expense"
+                             type="object"
+                             class="btn-secondary"
+                             invisible="state != 'review' or not is_receipt"/>
+                     <button name="action_match_bank_statement"
+                             string="Match Bank"
+                             type="object"
+                             class="btn-secondary"
+                             invisible="state != 'review' or not detected_document_type in ('invoice','receipt') or not bank_statement_line_id"
+                             help="Match this document to a bank statement line for reconciliation"/>
+                     <button name="action_reset_to_draft"
+                             string="Reset to Draft"
+                             type="object"
+                             invisible="state in ('draft', 'done')"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="draft,processing,review,done"/>
                 </header>
 
                 <sheet>
+                    <!-- Stat buttons -->
+                    <div name="button_box" class="oe_button_box">
+                        <button class="oe_stat_button" type="object"
+                                name="action_view_quota_logs"
+                                icon="fa-bar-chart"
+                                invisible="quota_log_count == 0">
+                            <field name="quota_log_count" widget="statinfo"
+                                   string="API Calls"/>
+                        </button>
+                        <button class="oe_stat_button" type="object"
+                                name="action_view_error_logs"
+                                icon="fa-exclamation-triangle"
+                                invisible="error_log_count == 0">
+                            <field name="error_log_count" widget="statinfo"
+                                   string="Errors"/>
+                        </button>
+                    </div>
+
+                    <!-- Hidden fields used in invisible modifiers -->
+                    <field name="is_receipt" invisible="1"/>
+
                     <div class="oe_title">
                         <h1>
                             <field name="name" placeholder="Document name..."/>
                         </h1>
                     </div>
 
-                    <!-- ── Source linked record info ───────────────────────── -->
+                    <!-- Source linked record info -->
                     <div class="alert alert-secondary"
-                         invisible="not source_record_display"
-                         role="note">
-                        <i class="fa fa-link me-1"/>
-                        Linked from Odoo record:
-                        <strong><field name="source_record_display" readonly="1" nolabel="1"/></strong>
+                         invisible="not source_record_display" role="note">
+                        <i class="fa fa-link"/> Linked from:
+                        <strong>
+                            <field name="source_record_display" readonly="1" nolabel="1"/>
+                        </strong>
                     </div>
 
-                    <!-- ── Input mode toggle ───────────────────────────────── -->
+                    <!-- Input mode toggle -->
                     <group string="Document Source" invisible="state != 'draft'">
                         <field name="input_mode" widget="radio" nolabel="1"
                                options="{'horizontal': true}"/>
                     </group>
 
-                    <!-- ── Option A: upload new file ──────────────────────── -->
+                    <!-- Option A: upload new file -->
                     <group string="Upload New File"
                            invisible="input_mode != 'upload' or state != 'draft'">
                         <group>
                             <field name="file_data" filename="file_name"
                                    widget="binary" string="Choose File"/>
                             <field name="file_name" readonly="1"/>
-                        </group>
-                        <group>
                             <field name="file_mimetype" readonly="1"/>
                         </group>
                     </group>
 
-                    <!-- ── Option B: pick existing Odoo attachment ─────────── -->
+                    <!-- Option B: pick existing Odoo attachment -->
                     <group string="Select Existing Odoo Document"
                            invisible="input_mode != 'existing' or state != 'draft'">
                         <group>
                             <field name="source_attachment_id"
                                    domain="[('type', '=', 'binary')]"
-                                   options="{'no_create': True}"
-                                   help="Pick any file already attached to an Odoo record"/>
+                                   options="{'no_create': True}"/>
                             <field name="file_name" readonly="1"/>
                         </group>
                         <group>
-                            <field name="source_model" readonly="1"
-                                   invisible="not source_model"/>
                             <field name="source_record_display" readonly="1"
                                    invisible="not source_record_display"/>
                         </group>
                     </group>
 
-                    <!-- ── Extraction config ──────────────────────────────── -->
+                    <!-- Extraction config -->
                     <group string="Extraction Settings" invisible="state != 'draft'">
                         <group>
                             <field name="extraction_mode" widget="radio"/>
+                            <field name="ocr_language"
+                                   placeholder="eng"
+                                   help="Tesseract language code(s). Example: eng, fra, eng+fra+kin"/>
+                            <field name="force_re_ocr"
+                                   invisible="not raw_text"
+                                   help="Force new OCR even if raw text was already extracted"/>
                         </group>
                         <group>
                             <field name="template_id"
@@ -133,11 +167,11 @@
                                    required="extraction_mode == 'custom'"
                                    placeholder="vendor, date, total, phone, address"/>
                             <field name="extra_prompt"
-                                   placeholder="Extra AI context: e.g. Amounts are in RWF"/>
+                                   placeholder="Extra AI context (optional)..."/>
                         </group>
                     </group>
 
-                    <!-- ── AI Results ─────────────────────────────────────── -->
+                    <!-- AI Results -->
                     <group string="Extraction Results"
                            invisible="state in ('draft', 'processing')">
                         <group>
@@ -157,38 +191,49 @@
                         </group>
                     </group>
 
-                    <!-- ── Extracted + editable data ─────────────────────── -->
+                    <!-- Extracted + editable data -->
                     <notebook invisible="state in ('draft', 'processing')">
-
-                        <page string="Business Data" name="business_data">
-                            <group col="2">
-                                <group string="Document Details">
-                                    <field name="vendor_name"/>
-                                    <field name="reference_number"/>
-                                    <field name="document_date"/>
-                                    <field name="total_amount"/>
-                                    <field name="currency_detected"/>
-                                    <field name="tax_amount"/>
-                                </group>
-                                <group string="Contact Info">
-                                    <field name="contact_name"/>
-                                    <field name="contact_phone"/>
-                                    <field name="contact_email"/>
-                                    <field name="contact_address" widget="text"/>
-                                </group>
-                            </group>
-                            <group string="Other Extracted Fields"
-                                   invisible="not extra_fields_display">
-                                <field name="extra_fields_display"
-                                       readonly="1" nolabel="1" colspan="2"/>
-                            </group>
-                        </page>
+                         <page string="Business Data" name="business_data">
+                             <group col="2">
+                                 <group string="Document Details">
+                                     <field name="vendor_name"/>
+                                     <field name="reference_number"/>
+                                     <field name="document_date"/>
+                                     <field name="total_amount"/>
+                                     <field name="currency_detected"/>
+                                     <field name="tax_amount"/>
+                                     <field name="vat_number"/>
+                                     <field name="iban"/>
+                                     <field name="swift"/>
+                                 </group>
+                                 <group string="Contact Info">
+                                     <field name="contact_name"/>
+                                     <field name="contact_phone"/>
+                                     <field name="contact_email"/>
+                                     <field name="contact_address" widget="text"/>
+                                 </group>
+                                 <group string="Bank Reconciliation" invisible="detected_document_type not in ('invoice','receipt')">
+                                     <field name="bank_statement_line_id" readonly="1"/>
+                                     <field name="reconciliation_status" readonly="1"/>
+                                     <button name="action_match_bank_statement" string="Match Bank Statement" type="object"
+                                             class="btn-secondary" invisible="state != 'review' or bank_statement_line_id"/>
+                                 </group>
+                                 <group string="Expense Claim" invisible="not is_receipt">
+                                     <field name="expense_employee_id"/>
+                                 </group>
+                             </group>
+                             <group string="Other Extracted Fields"
+                                    invisible="not extra_fields_display">
+                                 <field name="extra_fields_display"
+                                        readonly="1" nolabel="1" colspan="2"/>
+                             </group>
+                         </page>
 
                         <page string="Raw OCR Text" name="raw_text">
                             <div class="alert alert-info" role="note">
                                 <i class="fa fa-info-circle"/>
-                                This is the raw text extracted by OCR from your document.
-                                The AI used this text to produce the structured data above.
+                                Raw text from OCR. The AI used this to extract structured data.
+                                Enable <strong>Force Re-OCR</strong> on Draft to regenerate it.
                             </div>
                             <field name="raw_text" readonly="1" nolabel="1"
                                    widget="text"
@@ -201,6 +246,21 @@
                                    style="font-family: monospace; font-size: 12px;"/>
                         </page>
 
+                        <page string="Line Items" name="line_items"
+                              invisible="not line_item_ids">
+                            <field name="line_item_ids" nolabel="1">
+                                <tree string="Extracted Line Items" editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="description"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_price"/>
+                                    <field name="price_subtotal" readonly="1"/>
+                                    <field name="product_id" optional="show"/>
+                                    <field name="needs_review" widget="boolean_toggle"/>
+                                </tree>
+                            </field>
+                        </page>
+
                         <page string="Created Records" name="created_records"
                               invisible="not created_move_id and not created_partner_id">
                             <group>
@@ -208,13 +268,12 @@
                                 <field name="created_partner_id" readonly="1"/>
                             </group>
                         </page>
-
                     </notebook>
 
                     <!-- Processing spinner -->
                     <div class="alert alert-info" role="status"
                          invisible="state != 'processing'">
-                        <i class="fa fa-spinner fa-spin me-2"/>
+                        <i class="fa fa-spinner fa-spin"/>
                         Processing document — OCR and AI extraction in progress...
                     </div>
 
@@ -222,11 +281,10 @@
                     <div class="alert alert-danger" role="alert"
                          invisible="state != 'error'">
                         <strong>Extraction failed.</strong>
-                        <span class="ms-2">
+                        <span>
                             <field name="processing_notes" readonly="1" nolabel="1"/>
                         </span>
                     </div>
-
                 </sheet>
 
                 <chatter/>
@@ -260,24 +318,15 @@
                                     <span class="text-muted">
                                         <field name="detected_document_type"/>
                                     </span>
-                                    <span class="badge badge-pill bg-secondary ms-2"
-                                          t-if="record.input_mode.raw_value == 'existing'">
-                                        From Odoo
-                                    </span>
                                 </div>
                                 <div t-if="record.vendor_name.raw_value">
-                                    <i class="fa fa-building-o me-1"/>
+                                    <i class="fa fa-building-o"/>
                                     <field name="vendor_name"/>
                                 </div>
                                 <div t-if="record.total_amount.raw_value">
-                                    <i class="fa fa-money me-1"/>
+                                    <i class="fa fa-money"/>
                                     <field name="total_amount"/>
                                     <field name="currency_detected"/>
-                                </div>
-                                <div t-if="record.source_record_display.raw_value"
-                                     class="text-muted small mt-1">
-                                    <i class="fa fa-link me-1"/>
-                                    <field name="source_record_display"/>
                                 </div>
                                 <div class="o_kanban_record_bottom mt-2">
                                     <div class="oe_kanban_bottom_left">
@@ -316,7 +365,7 @@
                 <filter name="filter_error" string="Errors" domain="[('state','=','error')]"/>
                 <separator/>
                 <filter name="filter_invoice" string="Invoices"
-                        domain="[('detected_document_type','in',('invoice','proforma'))]"/>
+                        domain="[('detected_document_type','in',['invoice','proforma'])]"/>
                 <filter name="filter_receipt" string="Receipts"
                         domain="[('detected_document_type','=','receipt')]"/>
                 <filter name="filter_cv" string="CVs"
@@ -328,12 +377,9 @@
                             context="{'group_by': 'detected_document_type'}"/>
                     <filter name="group_mode" string="Input Mode"
                             context="{'group_by': 'input_mode'}"/>
-                    <filter name="group_source" string="Source Model"
-                            context="{'group_by': 'source_model'}"/>
                 </group>
             </search>
         </field>
     </record>
-
 
 </odoo>

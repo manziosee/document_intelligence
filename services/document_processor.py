@@ -4,14 +4,23 @@ Orchestrates the full extraction pipeline for one DocumentRecord.
 Flow:
   1. Read settings
   2. Resolve the file (uploaded OR existing Odoo attachment)
-  3. OCR / parse raw text
-  4. Call AI to extract structured data
-  5. Write results back to the record
+  3. OCR / parse raw text (uses cache unless force_re_ocr)
+  4. Apply custom extraction rules (regex/patterns) - optional
+  5. Extract QR/Barcode data - optional
+  6. Call AI to extract structured data (via pluggable provider)
+  7. Merge AI + custom rule results
+  8. Write results back to the record
+  9. Log quota usage and errors
 """
+import base64
+import io
 import logging
 import os
+import time
 
-from . import ocr_service, ai_service
+from . import ocr_service
+from .ai_providers import get_provider
+from .rule_based_extractor import RuleBasedExtractor
 
 _logger = logging.getLogger(__name__)
 
@@ -22,23 +31,139 @@ class DocumentProcessor:
         self.record = record
         self.env = record.env
 
+    # ── Settings ──────────────────────────────────────────────────────────────
+
+    def _read_settings(self):
+        ICP = self.env['ir.config_parameter'].sudo()
+
+        tier = (
+            ICP.get_param('document_intelligence.extraction_tier', 'rule_based') or 'rule_based'
+        ).strip()
+
+        provider = (
+            ICP.get_param('document_intelligence.ai_provider', 'groq') or 'groq'
+        ).strip()
+
+        openai_key = (
+            ICP.get_param('document_intelligence.openai_api_key', '')
+            or os.getenv('OPENAI_API_KEY', '')
+        ).strip()
+        groq_key = (
+            ICP.get_param('document_intelligence.groq_api_key', '')
+            or os.getenv('GROQ_API_KEY', '')
+        ).strip()
+        anthropic_key = (
+            ICP.get_param('document_intelligence.anthropic_api_key', '')
+            or os.getenv('ANTHROPIC_API_KEY', '')
+        ).strip()
+
+        ollama_url = (
+            ICP.get_param('document_intelligence.ollama_url', 'http://localhost:11434')
+            or 'http://localhost:11434'
+        ).strip()
+        ollama_model = (
+            ICP.get_param('document_intelligence.ollama_model', 'llama3')
+            or 'llama3'
+        ).strip()
+
+        model_map = {
+            'openai': (
+                ICP.get_param('document_intelligence.openai_model', 'gpt-4o-mini')
+                or 'gpt-4o-mini'
+            ).strip(),
+            'groq': (
+                ICP.get_param('document_intelligence.groq_model', 'llama-3.3-70b-versatile')
+                or 'llama-3.3-70b-versatile'
+            ).strip(),
+            'anthropic': (
+                ICP.get_param('document_intelligence.anthropic_model', 'claude-haiku-4-5-20251001')
+                or 'claude-haiku-4-5-20251001'
+            ).strip(),
+            'ollama': ollama_model,
+        }
+        model = model_map.get(provider, 'gpt-4o-mini')
+
+        return {
+            'tier': tier,
+            'provider': provider,
+            'openai_key': openai_key,
+            'groq_key': groq_key,
+            'anthropic_key': anthropic_key,
+            'ollama_url': ollama_url,
+            'ollama_model': ollama_model,
+            'model': model,
+        }
+
+    # ── AI prompt helpers ─────────────────────────────────────────────────────
+
+    _AUTO_SYSTEM_PROMPT = """\
+You are a document intelligence AI. Analyze the raw text and extract all meaningful data.
+Return ONLY a valid JSON object (no markdown fences, no extra text) with these keys:
+  document_type  : one of invoice, receipt, cv, contract, proforma, other
+  vendor_name    : company or person name on the document
+  reference_number : document reference or invoice number
+  document_date  : date in YYYY-MM-DD format
+  total_amount   : numeric total (no currency symbol)
+  currency       : 3-letter ISO currency code
+  tax_amount     : numeric tax
+  tax_rate       : numeric tax rate as percentage (e.g., 18.0 for 18%)
+  contact_name   : contact person name
+  contact_phone  : phone number
+  contact_email  : email address
+  contact_address: full address
+  vat_number     : VAT/Tax ID number
+  iban           : bank account IBAN
+  swift          : SWIFT/BIC code
+  bank_ref       : bank statement reference
+  line_items     : array of objects with keys: description, quantity, unit_price, tax_amount, tax_rate
+  suggested_action: one of create_invoice, create_contact, update_invoice, create_applicant, create_expense_claim, review, none
+  confidence     : float 0.0-1.0 how confident you are
+  notes          : short processing note
+
+For line_items, include EVERY line with product/service description, quantity, unit price, and subtotal.
+For invoices, include ALL line rows from the body of the invoice.
+For receipts, extract expense-related fields.
+"""
+
+    _CUSTOM_SYSTEM_PROMPT = """\
+You are a document intelligence AI. Extract only the fields listed in the user message.
+Return ONLY a valid JSON object with exactly those keys plus:
+  confidence: float 0.0-1.0
+  notes     : short processing note
+"""
+
+    _TEMPLATE_SYSTEM_PROMPT = """\
+You are a document intelligence AI. Extract exactly the fields defined in the template below.
+Return ONLY a valid JSON object with those keys plus:
+  confidence: float 0.0-1.0
+  notes     : short processing note
+"""
+
+    def _build_prompt(self, mode, fields, template, extra_prompt, raw_text):
+        if mode == 'custom' and fields:
+            system = self._CUSTOM_SYSTEM_PROMPT
+            user = f"Extract these fields: {', '.join(fields)}\n\n---\n{raw_text}"
+        elif mode == 'template' and template:
+            field_list = template.get_fields_list()
+            system = self._TEMPLATE_SYSTEM_PROMPT + f"\nTemplate: {template.name}\nFields: {', '.join(field_list)}"
+            user = raw_text
+        else:
+            system = self._AUTO_SYSTEM_PROMPT
+            user = raw_text
+
+        if extra_prompt:
+            system += f"\n\nAdditional context:\n{extra_prompt}"
+
+        return system, user
+
+    # ── Main pipeline ─────────────────────────────────────────────────────────
+
     def run(self):
         record = self.record
+        settings = self._read_settings()
+        tier = settings['tier']
 
-        # ── 1. Read settings ────────────────────────────────────────────────
-        ICP = self.env['ir.config_parameter'].sudo()
-        provider = (ICP.get_param('document_intelligence.ai_provider', 'openai') or 'openai').strip()
-        api_key = (ICP.get_param('document_intelligence.openai_api_key', '') or os.getenv('OPENAI_API_KEY') or '').strip()
-        groq_api_key = (ICP.get_param('document_intelligence.groq_api_key', '') or os.getenv('GROQ_API_KEY') or '').strip()
-        lang = (ICP.get_param('document_intelligence.tesseract_lang', 'eng') or 'eng').strip()
-
-        # Choose model based on provider
-        if provider == 'groq':
-            model = (ICP.get_param('document_intelligence.groq_model', 'llama-3.3-70b-versatile') or 'llama-3.3-70b-versatile').strip()
-        else:
-            model = (ICP.get_param('document_intelligence.openai_model', 'gpt-4o-mini') or 'gpt-4o-mini').strip()
-
-        # ── 2. Resolve file data ────────────────────────────────────────────
+        # ── 1. Resolve file data ────────────────────────────────────────────
         file_data_b64, file_name = record.get_file_data_and_name()
 
         if not file_data_b64:
@@ -47,21 +172,44 @@ class DocumentProcessor:
                 'Please upload a file or select an existing Odoo attachment.'
             )
 
-        # Normalize: Odoo Binary fields return bytes when accessed via ORM
         if isinstance(file_data_b64, bytes):
             file_data_b64 = file_data_b64.decode('ascii')
 
         _logger.info(
-            'Starting extraction for document %s (%s) — source: %s',
-            record.id, file_name, record.input_mode,
+            'Starting extraction for document %s (%s) — source: %s tier: %s',
+            record.id, file_name, record.input_mode, tier,
         )
 
-        # ── 3. Extract raw text ─────────────────────────────────────────────
-        raw_text = ocr_service.extract_text(
-            file_data_b64=file_data_b64,
-            file_name=file_name or '',
-            lang=lang,
-        )
+        # ── 2. OCR (with cache) ─────────────────────────────────────────────
+        if record.raw_text and not record.force_re_ocr:
+            raw_text = record.raw_text
+            _logger.info('Using cached OCR text for document %s', record.id)
+        else:
+            lang = record.get_effective_ocr_language()
+            try:
+                qr_data = None
+                qr_enabled = self.env['ir.config_parameter'].sudo().get_param(
+                    'document_intelligence.enable_qr_barcode', 'False'
+                ) == 'True'
+                if qr_enabled:
+                    qr_data = self._extract_qr_barcode(file_data_b64, file_name)
+
+                raw_text = ocr_service.extract_text(
+                    file_data_b64=file_data_b64,
+                    file_name=file_name or '',
+                    lang=lang,
+                )
+
+                if qr_data:
+                    raw_text = f"QR_DATA: {qr_data}\n\n{raw_text}"
+
+            except Exception as exc:
+                self.env['document.intelligence.error.log'].log_error(
+                    document=record,
+                    error_type='ocr',
+                    error=exc,
+                )
+                raise
 
         if not raw_text.strip():
             raise ValueError(
@@ -69,7 +217,20 @@ class DocumentProcessor:
                 'Check image quality or file format.'
             )
 
-        # ── 4. Determine extraction mode / fields ───────────────────────────
+        # ── TIER 1: Rule-based extraction (no AI, no key, zero cost) ─────────
+        if tier == 'rule_based':
+            self._run_rule_based(record, raw_text)
+            return
+
+        # ── 3. Apply custom extraction rules (shared by Tier 2 & 3) ──────────
+        custom_rule_results = {}
+        custom_rules_enabled = self.env['ir.config_parameter'].sudo().get_param(
+            'document_intelligence.enable_custom_rules', 'False'
+        ) == 'True'
+        if custom_rules_enabled:
+            custom_rule_results = self._apply_custom_rules(raw_text, record.detected_document_type)
+
+        # ── 4. Build extraction context ──────────────────────────────────────
         mode = record.extraction_mode or 'auto'
         fields = None
         template = None
@@ -80,8 +241,12 @@ class DocumentProcessor:
         if mode == 'template' and record.template_id:
             template = record.template_id
 
-        # Inject context about source record into AI prompt
         extra_prompt = record.extra_prompt or ''
+
+        if custom_rule_results:
+            rule_context = "\n".join([f"{k}: {v}" for k, v in custom_rule_results.items()])
+            extra_prompt = f"Pre-extracted fields from patterns:\n{rule_context}\n\n{extra_prompt}"
+
         if record.source_model == 'account.move' and record.linked_move_id:
             move = record.linked_move_id
             extra_prompt = (
@@ -95,30 +260,178 @@ class DocumentProcessor:
                 + extra_prompt
             )
 
-        # ── 5. AI extraction ────────────────────────────────────────────────
-        data = ai_service.extract_with_ai(
-            raw_text=raw_text,
-            api_key=api_key,
-            model=model,
-            mode=mode,
-            fields=fields,
-            template=template,
-            extra_prompt=extra_prompt,
-            provider=provider,
-            groq_api_key=groq_api_key,
+        system_prompt, user_message = self._build_prompt(
+            mode, fields, template, extra_prompt, raw_text,
         )
 
-        confidence = float(data.pop('confidence', 0.75)) * 100  # store as %
+        # ── 5. AI extraction (Tier 2: Ollama / Tier 3: Cloud) ────────────────
+        if tier == 'ollama':
+            provider_name = 'ollama'
+            model_label = settings['ollama_model']
+        else:
+            provider_name = settings['provider']
+            model_label = settings['model']
+
+        ai_provider = get_provider(
+            provider_name=provider_name,
+            openai_key=settings['openai_key'],
+            groq_key=settings['groq_key'],
+            anthropic_key=settings['anthropic_key'],
+            ollama_url=settings['ollama_url'],
+            ollama_model=settings['ollama_model'],
+        )
+
+        t0 = time.monotonic()
+        success = True
+        try:
+            raw_response = ai_provider.extract(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                model=model_label,
+            )
+            data = ai_provider._parse_json(raw_response)
+        except Exception as exc:
+            success = False
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            self.env['document.intelligence.quota.log'].log_call(
+                document=record,
+                provider=provider_name,
+                model_used=model_label,
+                text_chars=len(raw_text),
+                success=False,
+                response_ms=elapsed_ms,
+            )
+            self.env['document.intelligence.error.log'].log_error(
+                document=record,
+                error_type='ai',
+                error=exc,
+                provider=provider_name,
+            )
+            raise
+        finally:
+            if success:
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                self.env['document.intelligence.quota.log'].log_call(
+                    document=record,
+                    provider=provider_name,
+                    model_used=model_label,
+                    text_chars=len(raw_text),
+                    success=True,
+                    response_ms=elapsed_ms,
+                )
+
+        confidence = float(data.pop('confidence', 0.75)) * 100
         notes = data.pop('notes', '')
 
-        # ── 6. Update template usage counter ───────────────────────────────
+        for key, value in custom_rule_results.items():
+            if key not in data or not data[key]:
+                data[key] = value
+
         if template:
             template.sudo().write({'usage_count': template.usage_count + 1})
 
-        # ── 7. Populate the record ──────────────────────────────────────────
         record.populate_from_extracted(data, raw_text, confidence, notes)
 
         _logger.info(
-            'Extraction done for record %s: type=%s confidence=%.1f%%',
-            record.id, record.detected_document_type, confidence,
+            'Extraction done for record %s: type=%s confidence=%.1f%% time=%dms tier=%s',
+            record.id, record.detected_document_type, confidence, elapsed_ms, tier,
         )
+
+    # ── Tier 1 helper ─────────────────────────────────────────────────────────
+
+    def _run_rule_based(self, record, raw_text: str):
+        """Run pure regex extraction — no network, no key, free forever."""
+        t0 = time.monotonic()
+        extractor = RuleBasedExtractor()
+        data = extractor.extract(raw_text)
+
+        confidence = float(data.pop('confidence', 0.5)) * 100
+        notes = data.pop('notes', '')
+
+        # Merge any enabled custom rules on top
+        custom_rules_enabled = self.env['ir.config_parameter'].sudo().get_param(
+            'document_intelligence.enable_custom_rules', 'False'
+        ) == 'True'
+        if custom_rules_enabled:
+            custom_rule_results = self._apply_custom_rules(raw_text, data.get('document_type', ''))
+            for key, value in custom_rule_results.items():
+                if key not in data or not data[key]:
+                    data[key] = value
+
+        record.populate_from_extracted(data, raw_text, confidence, notes)
+
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        _logger.info(
+            'Rule-based extraction done for record %s: type=%s confidence=%.1f%% time=%dms',
+            record.id, record.detected_document_type, confidence, elapsed_ms,
+        )
+
+    # ── Helper methods ─────────────────────────────────────────────────────────
+
+    def _extract_qr_barcode(self, file_data_b64, file_name):
+        """
+        Attempt to extract QR codes or barcodes from the document.
+        Returns decoded text if found, None otherwise.
+        """
+        try:
+            # For images, use pyzbar
+            raw_bytes = base64.b64decode(file_data_b64)
+            fn = (file_name or '').lower()
+
+            # Only process image types for now (PDF would need conversion)
+            if not fn.endswith(('.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', '.webp')):
+                return None
+
+            try:
+                from PIL import Image
+                import pyzbar.pyzbar as pyzbar
+            except ImportError:
+                _logger.warning('pyzbar not installed; skipping QR/barcode extraction')
+                return None
+
+            img = Image.open(io.BytesIO(raw_bytes))
+            decoded_objs = pyzbar.decode(img)
+
+            if decoded_objs:
+                # Return all decoded data concatenated
+                data_list = [obj.data.decode('utf-8', errors='replace') for obj in decoded_objs]
+                return ' | '.join(data_list)
+
+        except Exception as e:
+            _logger.warning('QR/barcode extraction failed: %s', e)
+
+        return None
+
+    def _apply_custom_rules(self, raw_text, doc_type):
+        """
+        Apply all relevant custom extraction rules to raw text.
+        Returns dict of {field_name: extracted_value}.
+        """
+        results = {}
+        rules = self.env['document.intelligence.custom.rule'].search([
+            '|', ('active', '=', True),
+            ('active', '=', False),  # include inactive for one-off
+            ('document_type', 'in', [doc_type, 'general']),
+        ])
+
+        for rule in rules:
+            # Check vendor filter
+            if rule.vendor_ids and self.record.partner_id not in rule.vendor_ids:
+                continue
+
+            value, confidence = rule.apply_rule(raw_text)
+            if value:
+                # Map target_field to actual field name in document
+                field_mapping = {
+                    'invoice_number': 'reference_number',
+                    'order_number': 'reference_number',  # might need separate field
+                    'vat_number': 'vat_number',  # may need to add this field
+                    'iban': 'iban',
+                    'swift': 'swift',
+                    'custom': rule.custom_field_name,
+                }
+                target = field_mapping.get(rule.target_field, rule.target_field)
+                if target:
+                    results[target] = value
+
+        return results

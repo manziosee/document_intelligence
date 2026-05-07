@@ -1,13 +1,19 @@
 {
     'name': 'Document Intelligence',
-    'version': '17.0.2.0.0',
-    'summary': 'OCR + AI data extraction from any document — invoices, proformas, CVs and more',
+    'version': '17.0.3.0.0',
+    'summary': 'OCR + AI data extraction — works without any API key. Upgrade for higher accuracy.',
     'description': """
 Document Intelligence — OCR Data Fetching for Odoo
 ===================================================
 
 Extracts strings and structured data from images and documents so whatever is
 written in an image or PDF can be fetched as a record in Odoo.
+
+THREE-TIER EXTRACTION — WORKS WITHOUT ANY API KEY
+--------------------------------------------------
+* Tier 1 — Rule-Based  : Free, zero setup, zero cost. ~70-80% accuracy on structured invoices.
+* Tier 2 — Local AI    : Ollama (open source). Free, private, runs on your own server.
+* Tier 3 — Cloud AI    : Groq (free tier), OpenAI, Anthropic. Highest accuracy.
 
 HOW CAN BUSINESSES BENEFIT?
 ----------------------------
@@ -36,7 +42,7 @@ SUPPORTED DOCUMENT TYPES
 
 EXTRACTION MODES
 ----------------
-* Auto  — AI detects type and extracts all relevant fields
+* Auto  — detects document type and extracts all relevant fields
 * Custom — User specifies exactly which fields to extract
 * Template — Reusable templates for recurring document formats
 
@@ -57,25 +63,32 @@ WHAT HAPPENS AFTER EXTRACTION?
         'web',
     ],
     'external_dependencies': {
-        'python': ['pytesseract', 'Pillow', 'pdfminer.six', 'PyMuPDF', 'python-docx'],
-        'bin': ['tesseract'],
+        'python': ['pytesseract', 'Pillow', 'pdfminer.six', 'PyMuPDF', 'python-docx', 'pyzbar', 'requests'],
+        # bin tesseract is optional — module works without it via rule-based or direct AI vision
     },
     'data': [
         'security/security.xml',
         'security/ir.model.access.csv',
         'views/document_record_views.xml',
         'views/extraction_template_views.xml',
+        'views/quota_log_views.xml',
+        'views/error_log_views.xml',
         'views/res_config_settings_views.xml',
+        'views/enhanced_features_views.xml',
         'views/server_actions.xml',
         'wizard/document_review_wizard_view.xml',
         'wizard/from_odoo_wizard_view.xml',
+        'wizard/setup_wizard_view.xml',
         'views/menu.xml',
+        'data/scheduled_actions.xml',
+        'data/sample_templates.xml',
     ],
     'assets': {
         'web.assets_backend': [
             'document_intelligence/static/src/scss/document_intelligence.scss',
         ],
     },
+    'post_init_hook': 'post_init_hook',
     'application': True,
     'installable': True,
     'auto_install': False,

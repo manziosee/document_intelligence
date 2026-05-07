@@ -36,8 +36,10 @@ class DocumentReviewWizard(models.TransientModel):
 
     suggested_action = fields.Selection([
         ('create_invoice', 'Create Vendor Bill'),
+        ('update_invoice', 'Update Existing Invoice'),
         ('create_partner', 'Create / Update Contact'),
         ('create_hr_applicant', 'Create HR Applicant'),
+        ('create_expense_claim', 'Create Expense Claim'),
         ('store_only', 'Store Document Only'),
     ], string='Action to Perform', required=True)
 
@@ -51,6 +53,15 @@ class DocumentReviewWizard(models.TransientModel):
     contact_phone = fields.Char(string='Phone')
     contact_email = fields.Char(string='Email')
     contact_address = fields.Text(string='Address')
+    # New fields
+    vat_number = fields.Char(string='VAT / Tax ID')
+    iban = fields.Char(string='IBAN')
+    swift = fields.Char(string='SWIFT / BIC')
+    expense_employee_id = fields.Many2one(
+        'hr.employee',
+        string='Expense Employee',
+        help='Employee who will submit the expense claim (for receipts).',
+    )
     extra_fields_display = fields.Text(
         string='Other Extracted Fields', readonly=True,
     )
@@ -75,6 +86,10 @@ class DocumentReviewWizard(models.TransientModel):
                 'contact_phone': rec.contact_phone,
                 'contact_email': rec.contact_email,
                 'contact_address': rec.contact_address,
+                'vat_number': rec.vat_number,
+                'iban': rec.iban,
+                'swift': rec.swift,
+                'expense_employee_id': rec.expense_employee_id.id if rec.expense_employee_id else False,
                 'extra_fields_display': rec.extra_fields_display,
                 'partner_id': rec.partner_id.id if rec.partner_id else False,
             })
@@ -93,6 +108,10 @@ class DocumentReviewWizard(models.TransientModel):
             'contact_phone': self.contact_phone,
             'contact_email': self.contact_email,
             'contact_address': self.contact_address,
+            'vat_number': self.vat_number,
+            'iban': self.iban,
+            'swift': self.swift,
+            'expense_employee_id': self.expense_employee_id.id if self.expense_employee_id else False,
             'partner_id': self.partner_id.id if self.partner_id else False,
             'suggested_action': self.suggested_action,
         }

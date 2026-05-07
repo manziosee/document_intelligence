@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ── Tree view ──────────────────────────────────────────────────────── -->
+    <record id="view_doc_intel_quota_log_tree" model="ir.ui.view">
+        <field name="name">document.intelligence.quota.log.tree</field>
+        <field name="model">document.intelligence.quota.log</field>
+        <field name="arch" type="xml">
+            <tree string="API Quota Log"
+                  decoration-danger="not success"
+                  decoration-success="success">
+                <field name="call_date"/>
+                <field name="provider"/>
+                <field name="model_used"/>
+                <field name="document_id" optional="show"/>
+                <field name="user_id" optional="show"/>
+                <field name="text_chars"/>
+                <field name="estimated_tokens"/>
+                <field name="response_ms" string="Time (ms)"/>
+                <field name="success" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ── Search view ────────────────────────────────────────────────────── -->
+    <record id="view_doc_intel_quota_log_search" model="ir.ui.view">
+        <field name="name">document.intelligence.quota.log.search</field>
+        <field name="model">document.intelligence.quota.log</field>
+        <field name="arch" type="xml">
+            <search string="Search Quota Log">
+                <field name="provider"/>
+                <field name="model_used"/>
+                <field name="user_id"/>
+                <separator/>
+                <filter name="filter_success" string="Successful" domain="[('success','=',True)]"/>
+                <filter name="filter_failed" string="Failed" domain="[('success','=',False)]"/>
+                <separator/>
+                <filter name="filter_openai" string="OpenAI" domain="[('provider','=','openai')]"/>
+                <filter name="filter_groq" string="Groq" domain="[('provider','=','groq')]"/>
+                <filter name="filter_anthropic" string="Anthropic" domain="[('provider','=','anthropic')]"/>
+                <separator/>
+                <filter name="filter_today" string="Today"
+                        domain="[('call_date','&gt;=', datetime.datetime.combine(context_today(), datetime.time(0,0,0)).strftime('%Y-%m-%d %H:%M:%S'))]"/>
+                <filter name="filter_this_month" string="This Month"
+                        domain="[('call_date','&gt;=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01 00:00:00'))]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_provider" string="Provider"
+                            context="{'group_by': 'provider'}"/>
+                    <filter name="group_user" string="User"
+                            context="{'group_by': 'user_id'}"/>
+                    <filter name="group_date" string="Date"
+                            context="{'group_by': 'call_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+</odoo>

@@ -86,38 +86,28 @@ class DocumentIntelligenceSetupWizard(models.TransientModel):
         return self._reopen()
 
     def _test_ollama(self):
-        import requests as req
-        url = (self.ollama_url or 'http://localhost:11434').rstrip('/')
-        resp = req.get(f'{url}/api/tags', timeout=5)
-        resp.raise_for_status()
-        models_available = [m['name'] for m in resp.json().get('models', [])]
-        if models_available:
-            self.test_result = f'Ollama connected. Available models: {", ".join(models_available[:5])}'
-        else:
-            self.test_result = 'Ollama connected but no models found. Run: ollama pull llama3'
-        self.test_ok = True
+        from ..services import ai_providers as _ai
+        provider = _ai.OllamaProvider(
+            base_url=self.ollama_url or 'http://localhost:11434',
+            model=self.ollama_model or 'llama3',
+        )
+        result = provider.ping()
+        self.test_ok = result['ok']
+        self.test_result = result['message']
+        if result['ok'] and result.get('models'):
+            self.test_result += f" Models: {', '.join(result['models'][:5])}"
 
     def _test_cloud(self):
-        from ..services.ai_providers import get_provider
-        provider = get_provider(
+        from ..services import ai_providers as _ai
+        provider = _ai.get_provider(
             provider_name=self.cloud_provider,
             openai_key=self.openai_api_key or '',
             groq_key=self.groq_api_key or '',
             anthropic_key=self.anthropic_api_key or '',
         )
-        # Minimal test call
-        result = provider.extract(
-            system_prompt='Reply with valid JSON: {"ok": true}',
-            user_message='test',
-            model={
-                'groq': 'llama-3.3-70b-versatile',
-                'openai': 'gpt-4o-mini',
-                'anthropic': 'claude-haiku-4-5-20251001',
-            }.get(self.cloud_provider, ''),
-        )
-        if result:
-            self.test_result = f'Connection successful! Provider: {self.cloud_provider}'
-            self.test_ok = True
+        result = provider.ping()
+        self.test_ok = result['ok']
+        self.test_result = result['message']
 
     def action_save_and_finish(self):
         """Write settings to ir.config_parameter and close the wizard."""

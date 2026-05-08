@@ -62,10 +62,17 @@ WHAT HAPPENS AFTER EXTRACTION?
         'account',
         'web',
     ],
-    'external_dependencies': {
-        'python': ['pytesseract', 'Pillow', 'pdfminer.six', 'PyMuPDF', 'python-docx', 'pyzbar', 'requests'],
-        # bin tesseract is optional — module works without it via rule-based or direct AI vision
-    },
+    # No hard external_dependencies — all optional packages are lazy-imported inside
+    # functions and fail gracefully with actionable error messages.
+    # The module installs and runs with ZERO extra pip installs.
+    #
+    # Optional installs unlock more file types:
+    #   pip install pdfminer.six           # best PDF text extraction (recommended)
+    #   pip install pypdf                   # PDF fallback (pure Python, no binary)
+    #   pip install Pillow pytesseract      # scanned images + image OCR
+    #   pip install PyMuPDF                 # scanned PDF → image → OCR pipeline
+    #   pip install python-docx             # richer DOCX extraction (stdlib fallback built-in)
+    #   pip install openai anthropic        # Tier 3 cloud AI providers
     'data': [
         'security/security.xml',
         'security/ir.model.access.csv',

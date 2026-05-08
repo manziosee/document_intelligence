@@ -1,8 +1,188 @@
-from odoo import models, fields
+import importlib
+import subprocess
+import sys
+
+from odoo import models, fields, _
+from odoo.exceptions import UserError
 
 
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
+
+    # ── Package management ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _has_pkg(import_name: str) -> bool:
+        try:
+            importlib.import_module(import_name)
+            return True
+        except ImportError:
+            return False
+
+    def action_check_package_status(self):
+        """Show a live package status report as a sticky notification."""
+        ok = self._has_pkg
+        has_pdf    = ok('pdfminer') or ok('pypdf')
+        has_pymupdf = ok('fitz')
+        has_ocr    = ok('easyocr') or ok('pytesseract')
+        has_docx   = ok('docx')
+        has_ole    = ok('olefile')
+
+        def row(label, installed, tip=''):
+            icon = '✓' if installed else '✗'
+            suffix = f' — {tip}' if (not installed and tip) else ''
+            return f'{icon}  {label}{suffix}'
+
+        lines = [
+            row('Digital PDFs  (pdfminer / pypdf)',   has_pdf,    'pip install pypdf'),
+            row('PDF rendering (PyMuPDF)',             has_pymupdf,'pip install PyMuPDF'),
+            row('Image / Scanned PDF OCR  (easyocr)', has_ocr,    'pip install easyocr'),
+            row('DOCX  (python-docx, stdlib fallback active)', has_docx, 'pip install python-docx'),
+            row('Legacy .doc  (olefile)',              has_ole,    'pip install olefile'),
+        ]
+
+        all_good = has_pdf and has_pymupdf and has_ocr
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Package Status — Document Intelligence'),
+                'message': '\n'.join(lines),
+                'type': 'success' if all_good else 'warning',
+                'sticky': True,
+            },
+        }
+
+    def _pip_install(self, packages: list, label: str = ''):
+        """Run pip install and return a success/error notification."""
+        pkg_str = ' '.join(packages)
+        try:
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '--quiet'] + packages,
+                capture_output=True, text=True, timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            raise UserError(
+                _('Installation timed out (5 min). '
+                  'Install manually in your terminal:\n  pip install {}').format(pkg_str)
+            )
+
+        if result.returncode != 0:
+            raise UserError(
+                _('Installation failed for: {}\n\nError:\n{}\n\n'
+                  'Install manually:\n  pip install {}').format(
+                    label or pkg_str, (result.stderr or result.stdout)[:600], pkg_str,
+                )
+            )
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Installed: {}').format(label or pkg_str),
+                'message': _(
+                    '{} installed successfully.\n'
+                    'Restart the Odoo server for the change to take effect.'
+                ).format(pkg_str),
+                'type': 'success',
+                'sticky': True,
+            },
+        }
+
+    def action_install_pdf_packages(self):
+        return self._pip_install(['pypdf'], 'Digital PDF support')
+
+    def action_install_easyocr(self):
+        return self._pip_install(['easyocr'], 'Image & scanned PDF OCR')
+
+    def action_install_pymupdf(self):
+        return self._pip_install(['PyMuPDF'], 'PDF page rendering')
+
+    def action_install_python_docx(self):
+        return self._pip_install(['python-docx'], 'Rich DOCX extraction')
+
+    def action_install_olefile(self):
+        return self._pip_install(['olefile'], 'Legacy .doc support')
+
+    def action_install_full_ocr_stack(self):
+        """One-click: install everything needed for full offline OCR."""
+        return self._pip_install(
+            ['pypdf', 'PyMuPDF', 'easyocr'],
+            'Full OCR stack (pypdf + PyMuPDF + easyocr)',
+        )
+
+    # ── Connection test actions ───────────────────────────────────────────────
+
+    def action_test_ollama_connection(self):
+        """Called from the Settings page — test Ollama and show result in a notification."""
+        from ..services import ai_providers as _ai
+        url = (
+            self.env['ir.config_parameter'].sudo().get_param(
+                'document_intelligence.ollama_url', 'http://localhost:11434'
+            ) or 'http://localhost:11434'
+        )
+        model = (
+            self.env['ir.config_parameter'].sudo().get_param(
+                'document_intelligence.ollama_model', 'llama3'
+            ) or 'llama3'
+        )
+        provider = _ai.OllamaProvider(base_url=url, model=model)
+        result = provider.ping()
+
+        if result['ok']:
+            models_text = ''
+            if result.get('models'):
+                models_text = '\nAvailable models: ' + ', '.join(result['models'][:8])
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Ollama — Connected'),
+                    'message': result['message'] + models_text,
+                    'type': 'success',
+                    'sticky': False,
+                },
+            }
+        raise UserError(f"Ollama connection failed:\n{result['message']}")
+
+    def action_test_cloud_connection(self):
+        """Called from the Settings page — test the selected cloud provider."""
+        from ..services import ai_providers as _ai
+        ICP = self.env['ir.config_parameter'].sudo()
+        cloud_provider = (
+            ICP.get_param('document_intelligence.ai_provider', 'groq') or 'groq'
+        )
+        openai_key = ICP.get_param('document_intelligence.openai_api_key', '') or ''
+        groq_key = ICP.get_param('document_intelligence.groq_api_key', '') or ''
+        anthropic_key = ICP.get_param('document_intelligence.anthropic_api_key', '') or ''
+
+        try:
+            provider = _ai.get_provider(
+                provider_name=cloud_provider,
+                openai_key=openai_key,
+                groq_key=groq_key,
+                anthropic_key=anthropic_key,
+            )
+        except _ai.ProviderAuthError as exc:
+            raise UserError(str(exc))
+
+        result = provider.ping()
+
+        if result['ok']:
+            models_text = ''
+            if result.get('models'):
+                models_text = '\nModels: ' + ', '.join(result['models'][:5])
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _(f'{cloud_provider.title()} — Connected'),
+                    'message': result['message'] + models_text,
+                    'type': 'success',
+                    'sticky': False,
+                },
+            }
+        raise UserError(f"Connection failed:\n{result['message']}")
 
     # ── Extraction Tier ───────────────────────────────────────────────────────
 
@@ -64,9 +244,11 @@ class ResConfigSettings(models.TransientModel):
         config_parameter='document_intelligence.groq_api_key',
     )
     doc_intel_groq_model = fields.Selection([
-        ('llama-3.3-70b-versatile', 'Llama-3.3-70b Versatile'),
-        ('mixtral-8x7b-32768', 'Mixtral-8x7b-32768'),
-        ('gemma-7b', 'Gemma-7b'),
+        ('llama-3.3-70b-versatile', 'Llama 3.3 70B — best accuracy (recommended)'),
+        ('llama-3.1-70b-versatile', 'Llama 3.1 70B'),
+        ('llama-3.1-8b-instant',    'Llama 3.1 8B Instant — fastest'),
+        ('gemma2-9b-it',            'Gemma 2 9B — good multilingual'),
+        ('mixtral-8x7b-32768',      'Mixtral 8x7B — long documents (32K context)'),
     ],
         string='Groq Model',
         config_parameter='document_intelligence.groq_model',

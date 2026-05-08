@@ -64,6 +64,126 @@
                             </div>
                         </div>
 
+                        <!-- ── Package Status & Installation ────────────────── -->
+                        <div class="col-12 mt16">
+                            <h3>Package Status &amp; Installation</h3>
+                            <p class="text-muted mb0">
+                                This module works with <strong>zero pip installs</strong>.
+                                Install the packages below to unlock more file types.
+                                After installing, restart the Odoo server.
+                            </p>
+                        </div>
+
+                        <!-- Status checker -->
+                        <div class="col-12 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <button name="action_check_package_status"
+                                        type="object"
+                                        string="Check Which Packages Are Installed"
+                                        class="btn btn-info"/>
+                                <span class="text-muted ms-2">
+                                    Shows a live status report for all optional packages.
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Digital PDFs -->
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label string="Digital PDFs"/>
+                                <div class="text-muted">
+                                    Most invoices exported from accounting software (QuickBooks,
+                                    Wave, Xero, ERPNext). Pure Python — no system binary.
+                                </div>
+                                <div class="content-group mt8">
+                                    <button name="action_install_pdf_packages"
+                                            type="object"
+                                            string="Install pypdf"
+                                            class="btn btn-secondary btn-sm"/>
+                                    <code class="ms-2">pip install pypdf</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scanned PDFs / Images -->
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label string="Scanned PDFs &amp; Images (Local OCR)"/>
+                                <div class="text-muted">
+                                    Reads photos of invoices and scanned documents.
+                                    <strong>No system binary needed</strong> — downloads ML models
+                                    (~100 MB) on first use.
+                                </div>
+                                <div class="content-group mt8">
+                                    <button name="action_install_easyocr"
+                                            type="object"
+                                            string="Install easyocr"
+                                            class="btn btn-secondary btn-sm"/>
+                                    <code class="ms-2">pip install easyocr</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PyMuPDF -->
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label string="PDF Page Rendering (PyMuPDF)"/>
+                                <div class="text-muted">
+                                    Required to render scanned PDF pages into images for OCR
+                                    or AI vision. Pure Python — no system binary.
+                                </div>
+                                <div class="content-group mt8">
+                                    <button name="action_install_pymupdf"
+                                            type="object"
+                                            string="Install PyMuPDF"
+                                            class="btn btn-secondary btn-sm"/>
+                                    <code class="ms-2">pip install PyMuPDF</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legacy .doc -->
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label string="Legacy .doc Files (Word 97-2003)"/>
+                                <div class="text-muted">
+                                    Better extraction from old binary <code>.doc</code> files.
+                                    The module already has a UTF-16 fallback built in.
+                                </div>
+                                <div class="content-group mt8">
+                                    <button name="action_install_olefile"
+                                            type="object"
+                                            string="Install olefile"
+                                            class="btn btn-secondary btn-sm"/>
+                                    <code class="ms-2">pip install olefile</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- One-click full stack -->
+                        <div class="col-12 o_setting_box">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <label string="Install Everything (Recommended for production)"/>
+                                <div class="text-muted">
+                                    Installs <code>pypdf</code>, <code>PyMuPDF</code>, and
+                                    <code>easyocr</code> in one click. Covers all file types
+                                    with no system binary. Takes 2-5 minutes on first run.
+                                </div>
+                                <div class="content-group mt8">
+                                    <button name="action_install_full_ocr_stack"
+                                            type="object"
+                                            string="Install Full OCR Stack"
+                                            class="btn btn-primary"/>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- ── Ollama section (Tier 2) ────────────────────── -->
                         <div class="col-12"
                              invisible="doc_intel_extraction_tier != 'ollama'">
@@ -92,11 +212,26 @@
                                 <label for="doc_intel_ollama_model" string="Ollama Model"/>
                                 <div class="text-muted">
                                     Any model you pulled with <code>ollama pull</code>.
-                                    Recommended: <code>llama3</code>, <code>mistral</code>, <code>qwen2</code>
+                                    Recommended: <code>llama3</code>, <code>llama3.1:8b</code>, <code>mistral</code>, <code>qwen2</code>
                                 </div>
                                 <div class="content-group mt8">
                                     <field name="doc_intel_ollama_model" class="col-lg-6"/>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Ollama test button -->
+                        <div class="col-12 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'ollama'">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <button name="action_test_ollama_connection"
+                                        type="object"
+                                        string="Test Ollama Connection"
+                                        class="btn btn-secondary"/>
+                                <span class="text-muted ms-2">
+                                    Checks if Ollama is running and lists available models.
+                                </span>
                             </div>
                         </div>
 
@@ -234,6 +369,21 @@
                                 <div class="content-group mt8">
                                     <field name="doc_intel_anthropic_model" class="col-lg-6"/>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Cloud AI test button -->
+                        <div class="col-12 o_setting_box"
+                             invisible="doc_intel_extraction_tier != 'cloud'">
+                            <div class="o_setting_left_pane"/>
+                            <div class="o_setting_right_pane">
+                                <button name="action_test_cloud_connection"
+                                        type="object"
+                                        string="Test Cloud Connection"
+                                        class="btn btn-secondary"/>
+                                <span class="text-muted ms-2">
+                                    Verifies your API key and quota with the selected cloud provider.
+                                </span>
                             </div>
                         </div>
 

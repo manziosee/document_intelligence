@@ -1,11 +1,22 @@
 import json
 import logging
-from datetime import datetime, timedelta
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
+
+# Module-level so it is never intercepted by Odoo's metaclass
+_DOC_TYPE_LABELS = {
+    'invoice':          'Invoice',
+    'proof_of_payment': 'Proof of Payment',
+    'receipt':          'Receipt',
+    'proforma':         'Proforma Invoice',
+    'contract':         'Contract',
+    'cv':               'CV',
+    'form':             'Form',
+    'general':          'Document',
+}
 
 
 class DocumentRecord(models.Model):
@@ -128,6 +139,7 @@ class DocumentRecord(models.Model):
 
     detected_document_type = fields.Selection([
         ('invoice', 'Invoice'),
+        ('proof_of_payment', 'Proof of Payment'),
         ('receipt', 'Receipt'),
         ('proforma', 'Proforma Invoice'),
         ('contract', 'Contract'),
@@ -767,9 +779,17 @@ class DocumentRecord(models.Model):
         date_val = self._parse_date(data.get('document_date') or data.get('date') or '')
         total   = self._to_float(data.get('total_amount') if data.get('total_amount') is not None else data.get('total', 0))
         tax     = self._to_float(data.get('tax_amount') if data.get('tax_amount') is not None else data.get('tax', 0))
-        currency = (data.get('currency') or '').strip().upper() or 'RWF'
+        extracted_currency = (data.get('currency') or '').strip().upper()
+        currency = extracted_currency or self.env.company.currency_id.name or 'USD'
 
-        self.write({
+        # ── Auto-generate document name (only if still the default placeholder) ─
+        try:
+            auto_name = self._build_document_name(doc_type, vendor, ref, date_val)
+        except Exception:
+            _logger.exception('_build_document_name failed — will skip auto-naming')
+            auto_name = vendor or False
+
+        vals = {
             'state': 'review',
             'raw_text': raw_text,
             'extracted_data_json': json.dumps(data, indent=2, ensure_ascii=False),
@@ -791,7 +811,23 @@ class DocumentRecord(models.Model):
             'iban': data.get('iban', ''),
             'swift': data.get('swift', ''),
             'extra_fields_display': json.dumps(extra, indent=2, ensure_ascii=False) if extra else False,
-        })
+        }
+        # Only replace the name when the user hasn't typed one yet
+        _default_names = {_('New Document'), 'New Document', 'new document', '', False, None}
+        current_name = self.name or ''
+        is_default = (
+            current_name in _default_names
+            or current_name.lower() == 'new document'
+            or current_name == (self.file_name or '')
+        )
+        _logger.info(
+            'Doc %s auto-naming: current=%r, auto_name=%r, vendor=%r, is_default=%s',
+            self.id, current_name, auto_name, vendor, is_default,
+        )
+        if is_default and auto_name:
+            vals['name'] = auto_name
+
+        self.write(vals)
 
         # ── Auto-match partner ────────────────────────────────────────────────
         if not self.partner_id and vendor:
@@ -813,6 +849,13 @@ class DocumentRecord(models.Model):
                     'quantity': self._to_float(item.get('quantity', 1)),
                     'unit_price': self._to_float(item.get('unit_price', 0)),
                 })
+
+    def _build_document_name(self, doc_type: str, vendor: str, ref: str, date_val) -> str:
+        """Return the vendor/company name as the document name, falling back to the document type."""
+        if vendor:
+            return vendor
+        # No vendor extracted — use the document type label as a minimal fallback
+        return _DOC_TYPE_LABELS.get(doc_type, 'Document')
 
     @staticmethod
     def _parse_date(raw_date):

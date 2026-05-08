@@ -158,6 +158,16 @@ _SWIFT_BARE_RE = re.compile(r'\b([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b')
 
 # ── Document type detection ───────────────────────────────────────────────────
 _DOCTYPE_KEYWORDS: dict[str, list[str]] = {
+    # Proof of payment scores highest on these — must come before receipt/invoice
+    'proof_of_payment': [
+        'proof of payment', 'payment confirmation', 'payment confirmed',
+        'transaction confirmation', 'transfer confirmation', 'bank confirmation',
+        'payment advice', 'remittance advice', 'payment notification',
+        'payment voucher', 'payment slip', 'acknowledgement of payment',
+        'wire transfer confirmation', 'swift confirmation',
+        'debit confirmation', 'credit confirmation',
+        'preuve de paiement', 'confirmation de paiement',
+    ],
     'proforma': [
         'proforma invoice', 'pro-forma invoice', 'pro forma invoice',
         'proforma', 'pro-forma', 'quotation', 'devis', 'estimate', 'quote',
@@ -168,11 +178,11 @@ _DOCTYPE_KEYWORDS: dict[str, list[str]] = {
         'invoice', 'debit note', 'note de débit',
     ],
     'receipt': [
-        'official receipt', 'payment receipt', 'cash receipt', 'reçu',
-        'receipt', 'proof of payment', 'acknowledgement of payment',
+        'official receipt', 'cash receipt', 'reçu de caisse',
+        'receipt', 'reçu',
     ],
     'cv': [
-        'curriculum vitae', 'curriculum vitæ', 'curriculum vitae',
+        'curriculum vitae', 'curriculum vitæ',
         'résumé', 'resume', 'cv ', ' cv\n', 'c.v.',
         'professional profile', 'work experience', 'education background',
     ],
@@ -184,12 +194,13 @@ _DOCTYPE_KEYWORDS: dict[str, list[str]] = {
 }
 
 _DOCTYPE_ACTION = {
-    'invoice': 'create_invoice',
-    'proforma': 'create_invoice',
-    'receipt': 'create_expense_claim',
-    'cv': 'create_applicant',
-    'contract': 'review',
-    'other': 'review',
+    'invoice':          'create_invoice',
+    'proforma':         'create_invoice',
+    'proof_of_payment': 'review',
+    'receipt':          'create_expense_claim',
+    'cv':               'create_applicant',
+    'contract':         'review',
+    'other':            'review',
 }
 
 # Company / legal entity suffixes common in Rwanda and globally

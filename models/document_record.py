@@ -1,5 +1,9 @@
+import hashlib
 import json
 import logging
+import os
+import re
+from datetime import date as _date, timedelta
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
@@ -245,7 +249,14 @@ class DocumentRecord(models.Model):
     email_sender = fields.Char(string='Email Sender')
     email_received_date = fields.Datetime(string='Email Received Date')
 
-    # Multi-currency
+    # ── Async processing ──────────────────────────────────────────────────────
+    async_extraction = fields.Boolean(
+        string='Queue for Background Extraction', default=False,
+        help='When True, extraction runs in the background via cron — the browser does not wait.',
+    )
+    async_queued_at = fields.Datetime(string='Queued At', readonly=True)
+
+    # ── Multi-currency ────────────────────────────────────────────────────────
     currency_id = fields.Many2one('res.currency', string='Currency', compute='_compute_currency', store=True)
 
     # Tax details
@@ -433,6 +444,47 @@ class DocumentRecord(models.Model):
                 'type': 'success',
             },
         }
+
+    def action_extract_async(self):
+        """Queue document for background extraction — returns immediately."""
+        self.ensure_one()
+        if self.input_mode == 'upload' and not self.file_data:
+            raise UserError(_('Please upload a document before extracting.'))
+        if self.input_mode == 'existing' and not self.source_attachment_id:
+            raise UserError(_('Please select an existing Odoo document.'))
+        self.write({
+            'async_extraction': True,
+            'async_queued_at': fields.Datetime.now(),
+            'state': 'processing',
+        })
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Queued for Extraction'),
+                'message': _('"%s" is queued. The result will appear in a few minutes.') % self.name,
+                'type': 'info',
+                'sticky': False,
+            },
+        }
+
+    @api.model
+    def _scheduled_process_async_queue(self):
+        """Cron entry point: process all documents queued for async extraction."""
+        queued = self.search([
+            ('async_extraction', '=', True),
+            ('state', '=', 'processing'),
+        ], limit=20)  # process at most 20 per cron run to avoid timeouts
+        _logger.info('Async extraction cron: %d documents queued', len(queued))
+        for rec in queued:
+            try:
+                rec.write({'async_extraction': False})
+                from ..services.document_processor import DocumentProcessor
+                DocumentProcessor(rec).run()
+                _logger.info('Async extraction done for record %s', rec.id)
+            except Exception as exc:
+                _logger.exception('Async extraction failed for record %s', rec.id)
+                rec.write({'state': 'error', 'processing_notes': str(exc)})
 
     def action_open_review(self):
         self.ensure_one()
@@ -702,6 +754,59 @@ class DocumentRecord(models.Model):
             return self.action_create_odoo_record()
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Email ingestion (mail.alias)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    _mail_alias_model_name = 'document.intelligence.record'
+    _mail_alias_force_thread_id = False
+
+    @api.model
+    def message_new(self, msg_dict, custom_values=None):
+        """
+        Called by Odoo's mail system when a new email arrives at the module alias
+        (e.g. invoices@yourcompany.odoo.com).  Creates one DocumentRecord per
+        attachment and queues it for async extraction.
+        """
+        subject = msg_dict.get('subject', '') or ''
+        sender = msg_dict.get('email_from', '') or ''
+        attachments = msg_dict.get('attachments', [])
+
+        _ALLOWED_EXTS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.docx', '.doc'}
+        created = []
+        for att in attachments:
+            # att is (filename, bytes_data) or FileUpload — handle both
+            if isinstance(att, (list, tuple)) and len(att) >= 2:
+                fname, fdata = att[0], att[1]
+            elif hasattr(att, 'fname') and hasattr(att, 'content'):
+                fname, fdata = att.fname, att.content
+            else:
+                continue
+
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in _ALLOWED_EXTS:
+                continue
+
+            import base64
+            rec = self.create({
+                'name': subject or fname,
+                'file_data': base64.b64encode(fdata if isinstance(fdata, bytes) else fdata.encode()),
+                'file_name': fname,
+                'email_message_id': msg_dict.get('message_id', ''),
+                'email_sender': sender,
+                'email_received_date': fields.Datetime.now(),
+                'async_extraction': True,
+                'async_queued_at': fields.Datetime.now(),
+                'state': 'processing',
+            })
+            created.append(rec)
+            _logger.info('Email ingestion: created record %s from "%s" (sender: %s)', rec.id, fname, sender)
+
+        # Return the first record for the mail thread; if none, fall back to super
+        if created:
+            return created[0]
+        return super().message_new(msg_dict, custom_values)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Helpers for DocumentProcessor
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -829,11 +934,18 @@ class DocumentRecord(models.Model):
 
         self.write(vals)
 
+        # ── Vendor learning: apply saved corrections ──────────────────────────
+        if vendor:
+            self._apply_vendor_corrections(vendor)
+
         # ── Auto-match partner ────────────────────────────────────────────────
         if not self.partner_id and vendor:
             partner = self.env['res.partner'].search([('name', 'ilike', vendor)], limit=1)
             if partner:
                 self.partner_id = partner
+
+        # ── Fuzzy duplicate detection ─────────────────────────────────────────
+        self._detect_fuzzy_duplicates(vendor, total, date_val, ref)
 
         # ── Create line items ─────────────────────────────────────────────────
         line_items = data.get('line_items') or []
@@ -854,8 +966,117 @@ class DocumentRecord(models.Model):
         """Return the vendor/company name as the document name, falling back to the document type."""
         if vendor:
             return vendor
-        # No vendor extracted — use the document type label as a minimal fallback
         return _DOC_TYPE_LABELS.get(doc_type, 'Document')
+
+    # ── Vendor learning ───────────────────────────────────────────────────────
+
+    def _apply_vendor_corrections(self, extracted_vendor: str):
+        """
+        If a previous correction pattern matches the extracted vendor text,
+        override the vendor_name with the corrected value and flag it.
+        """
+        if not extracted_vendor:
+            return
+        corrections = self.env['document.intelligence.vendor.correction'].search([
+            ('applied_to_pattern', '=', True),
+        ])
+        lower = extracted_vendor.lower()
+        for corr in corrections:
+            if corr.original_value and corr.original_value.lower() in lower:
+                self.vendor_name = corr.corrected_value
+                self.vendor_pattern_applied = True
+                _logger.info(
+                    'Vendor learning applied: "%s" → "%s" for record %s',
+                    corr.original_value, corr.corrected_value, self.id,
+                )
+                return
+
+    def action_save_vendor_correction(self):
+        """
+        Called when a user manually corrects the vendor name after extraction.
+        Saves the correction so it is auto-applied to future documents.
+        """
+        self.ensure_one()
+        raw_json = self.extracted_data_json or '{}'
+        try:
+            data = json.loads(raw_json)
+        except Exception:
+            data = {}
+        original = (
+            data.get('vendor_name') or data.get('vendor') or data.get('sender') or ''
+        ).strip()
+        corrected = (self.vendor_name or '').strip()
+        if not original or not corrected or original == corrected:
+            return self._notify(_('No change to save — original and corrected vendor are the same.'), 'warning')
+
+        self.env['document.intelligence.vendor.correction'].create({
+            'document_id': self.id,
+            'partner_id': self.partner_id.id if self.partner_id else False,
+            'field_name': 'vendor_name',
+            'original_value': original,
+            'corrected_value': corrected,
+            'applied_to_pattern': True,
+        })
+        return self._notify(
+            _('Correction saved. Future documents from "%s" will be auto-corrected to "%s".') % (original, corrected)
+        )
+
+    # ── Fuzzy duplicate detection ─────────────────────────────────────────────
+
+    def _detect_fuzzy_duplicates(self, vendor: str, total: float, date_val, ref: str):
+        """
+        Find existing records that look like the same document even if the file
+        hash differs (e.g. two scans of the same invoice at different brightness).
+        Matches on: same vendor + amount within 1 % + date within 3 days + similar ref.
+        Creates a DocumentDuplicateCheck record if a potential duplicate is found.
+        """
+        if not total or total <= 0:
+            return
+        domain = [
+            ('id', '!=', self.id),
+            ('state', 'not in', ['draft', 'error']),
+            ('total_amount', '>', total * 0.99),
+            ('total_amount', '<', total * 1.01),
+        ]
+        if vendor:
+            # normalise: lower, strip common suffixes
+            vendor_lower = re.sub(r'\s+', ' ', vendor.lower().strip())
+            domain.append(('vendor_name', 'ilike', vendor_lower.split()[0]))
+        if date_val:
+            try:
+                d = date_val if isinstance(date_val, _date) else _date.fromisoformat(str(date_val))
+                domain += [
+                    ('document_date', '>=', str(d - timedelta(days=3))),
+                    ('document_date', '<=', str(d + timedelta(days=3))),
+                ]
+            except Exception:
+                pass
+
+        candidates = self.search(domain, limit=5)
+        for candidate in candidates:
+            # If references also match (when both have one), it is almost certainly a duplicate
+            if ref and candidate.reference_number and ref.strip() == candidate.reference_number.strip():
+                match_type = 'reference'
+                confidence = 98.0
+            else:
+                match_type = 'amount_date'
+                confidence = 75.0
+
+            existing = self.env['document.intelligence.duplicate.check'].search([
+                ('document_id', '=', self.id),
+                ('duplicate_of_id', '=', candidate.id),
+            ], limit=1)
+            if not existing:
+                self.env['document.intelligence.duplicate.check'].create({
+                    'document_id': self.id,
+                    'duplicate_of_id': candidate.id,
+                    'match_type': match_type,
+                    'confidence': confidence,
+                })
+                _logger.info(
+                    'Fuzzy duplicate detected: record %s looks like record %s (%s, %.0f%%)',
+                    self.id, candidate.id, match_type, confidence,
+                )
 
     @staticmethod
     def _parse_date(raw_date):

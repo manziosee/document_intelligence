@@ -413,6 +413,9 @@ Return ONLY a valid JSON object with those keys plus:
             record.id, record.detected_document_type, confidence, elapsed_ms, tier,
         )
 
+        # ── Auto-routing by confidence threshold ──────────────────────────────
+        self._apply_auto_approval(record)
+
     # ── Tier 1 helper ─────────────────────────────────────────────────────────
 
     def _run_rule_based(self, record, raw_text: str):
@@ -441,6 +444,71 @@ Return ONLY a valid JSON object with those keys plus:
             'Rule-based extraction done for record %s: type=%s confidence=%.1f%% time=%dms',
             record.id, record.detected_document_type, confidence, elapsed_ms,
         )
+
+        self._apply_auto_approval(record)
+
+    # ── Auto-routing by confidence threshold ──────────────────────────────────
+
+    def _apply_auto_approval(self, record):
+        """
+        Check auto-approval rules after extraction.
+        - Confidence ≥ rule threshold + amount ≤ max + trusted vendor → auto-create record.
+        - Confidence below the low-confidence floor → flag for priority review.
+        """
+        ICP = self.env['ir.config_parameter'].sudo()
+
+        # Global low-confidence floor — flag anything below this for priority review
+        low_floor = float(ICP.get_param('document_intelligence.low_confidence_floor', '40'))
+        if record.confidence_score < low_floor and record.confidence_score > 0:
+            record.write({'state': 'review'})
+            record.message_post(
+                body=(
+                    f'<b>Low confidence ({record.confidence_score:.0f}%)</b> — '
+                    'please review all extracted fields carefully before approving.'
+                )
+            )
+            _logger.info(
+                'Record %s flagged for review: confidence %.1f%% < floor %.1f%%',
+                record.id, record.confidence_score, low_floor,
+            )
+
+        # Check auto-approval rules (ordered by sequence)
+        if 'document.intelligence.auto.approval.rule' not in self.env:
+            return
+        rules = self.env['document.intelligence.auto.approval.rule'].search(
+            [('active', '=', True)], order='sequence'
+        )
+        for rule in rules:
+            if not rule.check_applies(record):
+                continue
+
+            _logger.info(
+                'Auto-approval rule "%s" matched record %s — action: %s',
+                rule.name, record.id, rule.action,
+            )
+            rule.sudo().write({'usage_count': rule.usage_count + 1})
+            record.write({
+                'auto_approval_rule_id': rule.id,
+                'auto_approved': True,
+            })
+
+            if rule.action in ('auto_create', 'auto_post'):
+                try:
+                    record.action_create_odoo_record()
+                    if rule.action == 'auto_post' and record.created_move_id:
+                        record.created_move_id.action_post()
+                except Exception as exc:
+                    _logger.warning(
+                        'Auto-approval create failed for record %s: %s', record.id, exc
+                    )
+            elif rule.action == 'notify':
+                record.message_post(
+                    body=(
+                        f'<b>Auto-approval rule "{rule.name}" matched</b> — '
+                        'confidence {record.confidence_score:.0f}%. Awaiting manual approval.'
+                    )
+                )
+            break  # first matching rule wins
 
     # ── AI vision OCR ──────────────────────────────────────────────────────────
 

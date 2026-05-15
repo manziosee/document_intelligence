@@ -22,6 +22,34 @@
         </field>
     </record>
 
+    <!-- ── Graph view — extractions per day by provider ──────────────────── -->
+    <record id="view_doc_intel_quota_log_graph" model="ir.ui.view">
+        <field name="name">document.intelligence.quota.log.graph</field>
+        <field name="model">document.intelligence.quota.log</field>
+        <field name="arch" type="xml">
+            <graph string="Extraction Activity" type="bar" stacked="True">
+                <field name="call_date" interval="day" type="row"/>
+                <field name="provider" type="col"/>
+                <field name="id" type="measure" string="# Calls"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- ── Pivot view — cost / token analysis ────────────────────────────── -->
+    <record id="view_doc_intel_quota_log_pivot" model="ir.ui.view">
+        <field name="name">document.intelligence.quota.log.pivot</field>
+        <field name="model">document.intelligence.quota.log</field>
+        <field name="arch" type="xml">
+            <pivot string="Extraction Analytics" display_quantity="true">
+                <field name="call_date" interval="month" type="row"/>
+                <field name="provider" type="col"/>
+                <field name="estimated_tokens" type="measure" string="Tokens"/>
+                <field name="response_ms" type="measure" string="Avg Time (ms)"/>
+                <field name="id" type="measure" string="# Calls"/>
+            </pivot>
+        </field>
+    </record>
+
     <!-- ── Search view ────────────────────────────────────────────────────── -->
     <record id="view_doc_intel_quota_log_search" model="ir.ui.view">
         <field name="name">document.intelligence.quota.log.search</field>
@@ -38,6 +66,7 @@
                 <filter name="filter_openai" string="OpenAI" domain="[('provider','=','openai')]"/>
                 <filter name="filter_groq" string="Groq" domain="[('provider','=','groq')]"/>
                 <filter name="filter_anthropic" string="Anthropic" domain="[('provider','=','anthropic')]"/>
+                <filter name="filter_ollama" string="Ollama (Local)" domain="[('provider','=','ollama')]"/>
                 <separator/>
                 <filter name="filter_today" string="Today"
                         domain="[('call_date','&gt;=', datetime.datetime.combine(context_today(), datetime.time(0,0,0)).strftime('%Y-%m-%d %H:%M:%S'))]"/>
@@ -50,8 +79,23 @@
                             context="{'group_by': 'user_id'}"/>
                     <filter name="group_date" string="Date"
                             context="{'group_by': 'call_date:day'}"/>
+                    <filter name="group_month" string="Month"
+                            context="{'group_by': 'call_date:month'}"/>
                 </group>
             </search>
+        </field>
+    </record>
+
+    <!-- ── Action — opens tree + graph + pivot ────────────────────────────── -->
+    <record id="action_doc_intel_quota_log" model="ir.actions.act_window">
+        <field name="name">Extraction Analytics</field>
+        <field name="res_model">document.intelligence.quota.log</field>
+        <field name="view_mode">graph,pivot,tree</field>
+        <field name="context">{'search_default_filter_success': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No API calls logged yet.</p>
+            <p>API calls appear here after the first document is extracted using
+               Ollama or a Cloud AI provider (Groq, OpenAI, Anthropic).</p>
         </field>
     </record>
 

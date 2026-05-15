@@ -172,10 +172,14 @@ def _pdf_text_layer(raw_bytes: bytes) -> str:
     try:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(raw_bytes))
-        pages = [page.extract_text() or '' for page in reader.pages]
-        text = '\n'.join(pages)
+        pages = []
+        for i, page in enumerate(reader.pages, 1):
+            pt = page.extract_text() or ''
+            if pt.strip():
+                pages.append(f'=== PAGE {i} ===\n{pt}')
+        text = '\n\n'.join(pages)
         if text.strip():
-            _logger.info('pypdf extracted %d chars', len(text))
+            _logger.info('pypdf extracted %d chars across %d pages', len(text), len(pages))
             return text
     except ImportError:
         _logger.debug('pypdf not installed')
@@ -208,13 +212,13 @@ def _pdf_ocr(raw_bytes: bytes, lang: str) -> tuple[str, str | None]:
         doc = fitz.open(stream=raw_bytes, filetype='pdf')
         pages_text: list[str] = []
 
-        for page in doc:
+        for i, page in enumerate(doc, 1):
             pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes('png')
 
             page_text, _ = _ocr_image_bytes(img_bytes, lang)
             if page_text:
-                pages_text.append(page_text)
+                pages_text.append(f'=== PAGE {i} ===\n{page_text}')
 
         if pages_text:
             text = '\n\n'.join(pages_text)

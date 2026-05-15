@@ -774,6 +774,35 @@ def _extract_line_items(text: str) -> list[dict]:
     return items[:50]  # cap at 50 lines
 
 
+def _extract_line_items_multipage(text: str) -> list[dict]:
+    """
+    Split text by '=== PAGE N ===' markers emitted by ocr_service, then run
+    _extract_line_items on each page independently.  This preserves table
+    structure across long documents where joining all pages loses row alignment.
+
+    Falls back to extracting from the whole text if no page markers exist.
+    """
+    _PAGE_MARKER = re.compile(r'^=== PAGE \d+ ===\s*$', re.MULTILINE)
+    pages = _PAGE_MARKER.split(text)
+
+    if len(pages) <= 1:
+        # No page markers — single page or non-PDF; extract from full text
+        return _extract_line_items(text)
+
+    all_items: list[dict] = []
+    seen: set[str] = set()
+    for page_text in pages:
+        if not page_text.strip():
+            continue
+        for item in _extract_line_items(page_text):
+            key = (item.get('description', '')[:40], round(item.get('unit_price', 0), 2))
+            if key not in seen:
+                seen.add(key)
+                all_items.append(item)
+
+    return all_items[:50]
+
+
 # ── Document type detection ───────────────────────────────────────────────────
 
 def _detect_doc_type(text: str) -> str:
@@ -899,9 +928,9 @@ class RuleBasedExtractor:
         if swift:
             result['swift'] = swift
 
-        # ── 12. Line items (invoice / proforma / receipt) ──────────────────
+        # ── 12. Line items (invoice / proforma / receipt) — per-page ──────
         if doc_type in ('invoice', 'proforma', 'receipt'):
-            items = _extract_line_items(text)
+            items = _extract_line_items_multipage(text)
             if items:
                 result['line_items'] = items
 

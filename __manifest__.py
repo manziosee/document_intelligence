@@ -1,6 +1,6 @@
 {
     'name': 'Document Intelligence',
-    'version': '17.0.3.0.0',
+    'version': '4.0.0',
     'summary': 'OCR + AI data extraction — works without any API key. Upgrade for higher accuracy.',
     'description': """
 Document Intelligence — OCR Data Fetching for Odoo
@@ -90,6 +90,7 @@ WHAT HAPPENS AFTER EXTRACTION?
         'data/scheduled_actions.xml',
         'data/sample_templates.xml',
     ],
+    # Works on Odoo 17, 18, 19 — version compatibility via services/compat.py
     'assets': {
         'web.assets_backend': [
             'document_intelligence/static/src/scss/document_intelligence.scss',

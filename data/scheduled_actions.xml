@@ -1,42 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Scheduled Action: Periodic Email Processing -->
+    <!-- ── Async extraction queue (runs every 2 minutes) ─────────────────── -->
+    <record id="ir_cron_di_async_extraction" model="ir.cron">
+        <field name="name">DI: Process Async Extraction Queue</field>
+        <field name="model_id" ref="model_document_intelligence_record"/>
+        <field name="state">code</field>
+        <field name="code">model._scheduled_process_async_queue()</field>
+        <field name="interval_number">2</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+    </record>
+
+    <!-- ── Watch folder scanner (runs every 5 minutes) ───────────────────── -->
+    <record id="ir_cron_di_watch_folder" model="ir.cron">
+        <field name="name">DI: Scan Watch Folders</field>
+        <field name="model_id" ref="model_document_intelligence_watch_folder"/>
+        <field name="state">code</field>
+        <field name="code">model._scheduled_scan()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="active">False</field>
+    </record>
+
+    <!-- ── Email ingestion (runs every hour) ─────────────────────────────── -->
     <record id="ir_cron_document_intelligence_email_processing" model="ir.cron">
         <field name="name">DI: Process Scheduled Email Attachments</field>
         <field name="model_id" ref="model_document_intelligence_email_schedule"/>
         <field name="state">code</field>
-        <field name="code">
-            model.search([('active', '=', True)])._process_email_schedule()
-        </field>
+        <field name="code">model.search([('active', '=', True)])._process_email_schedule()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">hours</field>
         <field name="numbercall">-1</field>
         <field name="active">False</field>
     </record>
 
-    <!-- Scheduled Action: Auto-Cleanup Old Records -->
+    <!-- ── Auto-cleanup old error records (runs daily) ───────────────────── -->
     <record id="ir_cron_document_intelligence_cleanup" model="ir.cron">
         <field name="name">DI: Auto-Cleanup Old Documents</field>
         <field name="model_id" ref="model_document_intelligence_record"/>
         <field name="state">code</field>
-        <field name="code">
-            model._scheduled_auto_cleanup()
-        </field>
+        <field name="code">model._scheduled_auto_cleanup()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">days</field>
         <field name="numbercall">-1</field>
         <field name="active">False</field>
     </record>
 
-    <!-- Scheduled Action: Generate Monthly Audit Reports -->
+    <!-- ── Monthly audit / cost report ───────────────────────────────────── -->
     <record id="ir_cron_document_intelligence_monthly_report" model="ir.cron">
         <field name="name">DI: Generate Monthly Compliance Report</field>
         <field name="model_id" ref="model_document_intelligence_audit_report"/>
         <field name="state">code</field>
-        <field name="code">
-            model._scheduled_generate_monthly_report()
-        </field>
+        <field name="code">model._scheduled_generate_monthly_report()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">months</field>
         <field name="numbercall">-1</field>

@@ -1,8 +1,14 @@
+import base64
 import logging
+import os
+from datetime import timedelta
+
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
+
+_WATCH_EXTS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.docx', '.doc', '.bmp', '.webp'}
 
 
 class DocumentLineItem(models.Model):
@@ -169,3 +175,125 @@ class ProductMatchWizard(models.TransientModel):
         elif self.selected_product_id:
             self.line_item_id.product_id = self.selected_product_id.id
         return {'type': 'ir.actions.act_window_close'}
+
+
+# ── Watch Folder Daemon ───────────────────────────────────────────────────────
+
+class WatchFolder(models.Model):
+    """
+    Monitor a server-side folder.  Any new file dropped there is automatically
+    ingested as a DocumentRecord and queued for async extraction.
+
+    Enable via Settings → Document Intelligence → Watch Folder.
+    The cron job `DI: Process Watch Folder` calls _scheduled_scan() every N minutes.
+    """
+    _name = 'document.intelligence.watch.folder'
+    _description = 'Document Intelligence Watch Folder'
+    _inherit = ['mail.thread']
+    _order = 'name'
+
+    name = fields.Char(string='Folder Name', required=True)
+    active = fields.Boolean(default=True)
+    folder_path = fields.Char(
+        string='Folder Path', required=True,
+        help='Absolute path on the Odoo server, e.g. /opt/odoo/incoming_invoices',
+    )
+    move_to_path = fields.Char(
+        string='Processed Folder',
+        help='After ingestion move files here (leave empty to delete them from the source).',
+    )
+    auto_extract = fields.Boolean(
+        string='Auto-Extract', default=True,
+        help='Queue files for background extraction immediately after ingestion.',
+    )
+    batch_id = fields.Many2one(
+        'document.intelligence.batch', string='Assign to Batch',
+        help='All ingested documents are added to this batch.',
+    )
+    last_scan = fields.Datetime(string='Last Scan', readonly=True)
+    total_ingested = fields.Integer(string='Total Ingested', default=0, readonly=True)
+    last_error = fields.Text(string='Last Error', readonly=True)
+
+    def action_scan_now(self):
+        self.ensure_one()
+        self._scan_folder()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Watch Folder Scanned'),
+                'message': _('Folder "%s" scanned. %d files ingested so far.') % (
+                    self.folder_path, self.total_ingested,
+                ),
+                'type': 'success',
+            },
+        }
+
+    @api.model
+    def _scheduled_scan(self):
+        """Cron entry point — scan all active watch folders."""
+        for folder in self.search([('active', '=', True)]):
+            try:
+                folder._scan_folder()
+            except Exception as exc:
+                _logger.exception('Watch folder scan failed for %s', folder.folder_path)
+                folder.last_error = str(exc)
+
+    def _scan_folder(self):
+        self.ensure_one()
+        path = (self.folder_path or '').strip()
+        if not path or not os.path.isdir(path):
+            _logger.warning('Watch folder path does not exist: %s', path)
+            self.last_error = f'Path not found: {path}'
+            return
+
+        ingested = 0
+        Record = self.env['document.intelligence.record']
+
+        for fname in sorted(os.listdir(path)):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in _WATCH_EXTS:
+                continue
+            fpath = os.path.join(path, fname)
+            if not os.path.isfile(fpath):
+                continue
+
+            try:
+                with open(fpath, 'rb') as fh:
+                    raw = fh.read()
+
+                vals = {
+                    'name': os.path.splitext(fname)[0],
+                    'file_data': base64.b64encode(raw),
+                    'file_name': fname,
+                }
+                if self.auto_extract:
+                    vals.update({
+                        'async_extraction': True,
+                        'async_queued_at': fields.Datetime.now(),
+                        'state': 'processing',
+                    })
+                if self.batch_id:
+                    vals['batch_id'] = self.batch_id.id
+
+                rec = Record.create(vals)
+                _logger.info('Watch folder ingested: %s → record %s', fpath, rec.id)
+                ingested += 1
+
+                # Move or delete after ingestion
+                if self.move_to_path and os.path.isdir(self.move_to_path):
+                    dest = os.path.join(self.move_to_path, fname)
+                    os.rename(fpath, dest)
+                else:
+                    os.remove(fpath)
+
+            except Exception as exc:
+                _logger.exception('Watch folder: failed to ingest %s', fpath)
+                self.last_error = str(exc)
+
+        self.write({
+            'last_scan': fields.Datetime.now(),
+            'total_ingested': self.total_ingested + ingested,
+            'last_error': False if ingested else self.last_error,
+        })
+        _logger.info('Watch folder "%s": ingested %d files', path, ingested)

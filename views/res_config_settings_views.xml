@@ -92,7 +92,7 @@
                         <div class="col-12 col-lg-6 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label string="Digital PDFs"/>
+                                <label string="Digital PDFs" class="o_form_label"/>
                                 <div class="text-muted">
                                     Most invoices exported from accounting software (QuickBooks,
                                     Wave, Xero, ERPNext). Pure Python — no system binary.
@@ -111,7 +111,7 @@
                         <div class="col-12 col-lg-6 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label string="Scanned PDFs &amp; Images (Local OCR)"/>
+                                <label string="Scanned PDFs &amp; Images (Local OCR)" class="o_form_label"/>
                                 <div class="text-muted">
                                     Reads photos of invoices and scanned documents.
                                     <strong>No system binary needed</strong> — downloads ML models
@@ -131,7 +131,7 @@
                         <div class="col-12 col-lg-6 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label string="PDF Page Rendering (PyMuPDF)"/>
+                                <label string="PDF Page Rendering (PyMuPDF)" class="o_form_label"/>
                                 <div class="text-muted">
                                     Required to render scanned PDF pages into images for OCR
                                     or AI vision. Pure Python — no system binary.
@@ -150,7 +150,7 @@
                         <div class="col-12 col-lg-6 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label string="Legacy .doc Files (Word 97-2003)"/>
+                                <label string="Legacy .doc Files (Word 97-2003)" class="o_form_label"/>
                                 <div class="text-muted">
                                     Better extraction from old binary <code>.doc</code> files.
                                     The module already has a UTF-16 fallback built in.
@@ -169,7 +169,7 @@
                         <div class="col-12 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label string="Install Everything (Recommended for production)"/>
+                                <label string="Install Everything (Recommended for production)" class="o_form_label"/>
                                 <div class="text-muted">
                                     Installs <code>pypdf</code>, <code>PyMuPDF</code>, and
                                     <code>easyocr</code> in one click. Covers all file types

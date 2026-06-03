@@ -437,6 +437,24 @@ class DocumentProcessor:
             if key not in data or not data[key]:
                 data[key] = value
 
+        # Rule-based safety net: if critical fields are still missing after AI,
+        # run the rule-based extractor and use its values to fill the gaps.
+        _CRITICAL = ('total_amount', 'vendor_name', 'reference_number', 'document_date')
+        if any(not data.get(k) for k in _CRITICAL):
+            try:
+                rb_data = RuleBasedExtractor().extract(raw_text)
+                rb_data.pop('confidence', None)
+                rb_data.pop('notes', None)
+                rb_data.pop('suggested_action', None)
+                for k in _CRITICAL:
+                    if not data.get(k) and rb_data.get(k):
+                        data[k] = rb_data[k]
+                        _logger.info(
+                            'Rule-based fallback filled missing field %s = %r', k, rb_data[k]
+                        )
+            except Exception as exc:
+                _logger.debug('Rule-based safety net failed (non-fatal): %s', exc)
+
         if template:
             template.sudo().write({'usage_count': template.usage_count + 1})
 
@@ -524,16 +542,52 @@ class DocumentProcessor:
                 return None
             return s if len(s) >= 2 else None
 
-        # Numeric fields
-        for field in ('total_amount', 'tax_amount'):
-            if field in data:
-                val = _to_float(data[field])
-                if val:
-                    data[field] = val
-                else:
-                    data.pop(field, None)
+        # ── total_amount ────────────────────────────────────────────────────────
+        # Use _to_float but allow 0 only when it truly isn't set
+        if 'total_amount' in data:
+            val = _to_float(data['total_amount'])
+            if val and val > 0:
+                data['total_amount'] = val
+            else:
+                data.pop('total_amount', None)
 
-        # tax_rate: strip "%" if present
+        # ── tax_amount vs tax_rate confusion ────────────────────────────────────
+        # The most common AI mistake: returning the TAX RATE (e.g. 18.0) in
+        # the tax_amount field instead of the monetary tax amount.
+        # Heuristic: values ≤ 30 that look like a whole percentage are rates.
+        _COMMON_TAX_RATES = {
+            5.0, 6.0, 7.0, 7.5, 8.0, 9.0, 10.0, 12.0, 12.5, 13.0, 14.0,
+            15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 23.0, 25.0, 30.0,
+        }
+        if 'tax_amount' in data:
+            tax_val = _to_float(data['tax_amount'])
+            total_val = data.get('total_amount') or 0.0
+            if not tax_val or tax_val <= 0:
+                data.pop('tax_amount', None)
+            elif tax_val <= 30.0:
+                # Check if this value looks like a percentage rate
+                is_rate = (
+                    tax_val in _COMMON_TAX_RATES  # known rate
+                    or tax_val == int(tax_val)      # whole number ≤ 30
+                )
+                if is_rate:
+                    # Confirm: real tax AMOUNT should be > 1% of total
+                    if total_val == 0.0 or (total_val > 0 and tax_val / total_val < 0.001):
+                        _logger.info(
+                            'Moved tax_amount=%.1f to tax_rate (looks like a percentage, total=%.2f)',
+                            tax_val, total_val,
+                        )
+                        if not data.get('tax_rate'):
+                            data['tax_rate'] = tax_val
+                        data.pop('tax_amount', None)
+                    else:
+                        data['tax_amount'] = tax_val
+                else:
+                    data['tax_amount'] = tax_val
+            else:
+                data['tax_amount'] = tax_val
+
+        # ── tax_rate: strip "%" if present ──────────────────────────────────────
         if 'tax_rate' in data:
             s = str(data['tax_rate']).replace('%', '').strip()
             try:
@@ -541,16 +595,32 @@ class DocumentProcessor:
             except (ValueError, TypeError):
                 data.pop('tax_rate', None)
 
-        # Phone
+        # ── Phone ────────────────────────────────────────────────────────────────
         if 'contact_phone' in data:
             data['contact_phone'] = _clean_phone(data['contact_phone'])
 
-        # Names
+        # ── Names ────────────────────────────────────────────────────────────────
         for field in ('vendor_name', 'contact_name'):
             if field in data:
                 data[field] = _clean_name(data[field])
 
-        # Reference number
+        # Fix vendor/contact confusion: if vendor_name is empty but contact_name
+        # looks like a company (has Ltd, Inc, Corp, SARL, etc.), it's the vendor.
+        _COMPANY_SUFFIX = re.compile(
+            r'\b(?:ltd\.?|limited|inc\.?|corp\.?|corporation|sarl|s\.a\.?|'
+            r'plc\.?|llc\.?|gmbh|sas|pty\.?|co\.?\s*ltd\.?|company|enterprise|'
+            r'enterprises|group|holding)\b',
+            re.IGNORECASE,
+        )
+        if not data.get('vendor_name') and data.get('contact_name'):
+            if _COMPANY_SUFFIX.search(data['contact_name']):
+                data['vendor_name'] = data.pop('contact_name')
+                _logger.info(
+                    'Moved contact_name="%s" to vendor_name (looks like a company)',
+                    data['vendor_name'],
+                )
+
+        # ── Reference number ─────────────────────────────────────────────────────
         if 'reference_number' in data:
             cleaned = _clean_ref(data['reference_number'])
             if cleaned:
@@ -558,7 +628,7 @@ class DocumentProcessor:
             else:
                 data.pop('reference_number', None)
 
-        # Line items: ensure numeric fields are floats
+        # ── Line items ───────────────────────────────────────────────────────────
         if 'line_items' in data and isinstance(data['line_items'], list):
             clean_items = []
             for item in data['line_items']:
@@ -570,6 +640,9 @@ class DocumentProcessor:
                 qty = _to_float(item.get('quantity')) or 1.0
                 unit_price = _to_float(item.get('unit_price')) or 0.0
                 total = _to_float(item.get('total')) or 0.0
+                # Derive total from qty × unit_price if missing
+                if total == 0.0 and unit_price > 0:
+                    total = round(qty * unit_price, 2)
                 clean_items.append({
                     'description': desc,
                     'quantity': qty,
@@ -577,6 +650,17 @@ class DocumentProcessor:
                     'total': total,
                 })
             data['line_items'] = clean_items
+
+            # Derive total_amount from line items if still missing
+            if not data.get('total_amount') and clean_items:
+                item_sum = sum(i['total'] or (i['quantity'] * i['unit_price'])
+                               for i in clean_items)
+                if item_sum > 0:
+                    data['total_amount'] = round(item_sum, 2)
+                    _logger.info(
+                        'Derived total_amount=%.2f from %d line items',
+                        data['total_amount'], len(clean_items),
+                    )
 
         return data
 

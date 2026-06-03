@@ -152,9 +152,10 @@ class ResConfigSettings(models.TransientModel):
         cloud_provider = (
             ICP.get_param('document_intelligence.ai_provider', 'groq') or 'groq'
         )
-        openai_key = ICP.get_param('document_intelligence.openai_api_key', '') or ''
-        groq_key = ICP.get_param('document_intelligence.groq_api_key', '') or ''
-        anthropic_key = ICP.get_param('document_intelligence.anthropic_api_key', '') or ''
+        # Always strip — copy-paste from API consoles commonly adds trailing spaces/newlines
+        openai_key = (ICP.get_param('document_intelligence.openai_api_key', '') or '').strip()
+        groq_key = (ICP.get_param('document_intelligence.groq_api_key', '') or '').strip()
+        anthropic_key = (ICP.get_param('document_intelligence.anthropic_api_key', '') or '').strip()
 
         try:
             provider = _ai.get_provider(

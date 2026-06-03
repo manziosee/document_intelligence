@@ -59,8 +59,13 @@ def _http_post(url: str, payload: dict, headers: dict, timeout: int = 60) -> dic
     body = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(url, data=body, headers=headers, method='POST')
 
-    # Use a context that verifies SSL by default; fall back to unverified on old OS
-    ctx = ssl.create_default_context()
+    # Build SSL context — verified by default, falls back gracefully on old OS
+    try:
+        ctx = ssl.create_default_context()
+    except Exception:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
 
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
@@ -331,37 +336,77 @@ class GroqProvider(AIProvider):
     ]
 
     def __init__(self, api_key: str):
-        if not api_key:
+        # Strip immediately — copy-paste from console commonly adds trailing spaces/newlines
+        cleaned = (api_key or '').strip()
+        if not cleaned:
             raise ProviderAuthError(
                 'Groq API key is not configured. '
                 'Get a free key at https://console.groq.com/keys '
                 'then go to Settings → Document Intelligence.'
             )
-        self._api_key = api_key
+        self._api_key = cleaned
 
     def ping(self) -> dict:
-        """Verify the Groq key — works with urllib, no openai package needed."""
-        url = f'{self.BASE_URL}/models'
-        req = urllib.request.Request(
-            url,
-            headers={'Authorization': f'Bearer {self._api_key}'},
-            method='GET',
-        )
+        """
+        Test the Groq API key with a real minimal completions call.
+
+        Uses urllib — no pip install needed.
+        A real call is more reliable than /models because some key types
+        can list models but are still rate-limited or restricted.
+        """
+        url = f'{self.BASE_URL}/chat/completions'
+        payload = {
+            'model': self.DEFAULT_MODEL,
+            'messages': [{'role': 'user', 'content': 'Hi'}],
+            'max_tokens': 1,
+            'temperature': 0.0,
+        }
+        headers = {
+            'Authorization': f'Bearer {self._api_key}',
+            'Content-Type': 'application/json',
+        }
+        key_hint = self._api_key[:7] + '...' if len(self._api_key) >= 7 else '(short key)'
+
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-            names = [m['id'] for m in data.get('data', [])]
-            return {'ok': True, 'message': 'Groq API key is valid.', 'models': names}
-        except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403):
-                return {
-                    'ok': False,
-                    'message': 'Invalid Groq API key. Check Settings → Document Intelligence.',
-                    'models': [],
-                }
-            return {'ok': False, 'message': f'Groq error: HTTP {exc.code}', 'models': []}
+            _http_post(url, payload, headers, timeout=20)
+            return {
+                'ok': True,
+                'message': f'Groq API key is valid and working. (key: {key_hint})',
+                'models': [m[0] for m in self.AVAILABLE_MODELS],
+            }
+        except ProviderAuthError:
+            return {
+                'ok': False,
+                'message': (
+                    f'Groq rejected the key (HTTP 401).\n\n'
+                    f'Key received: {key_hint}\n\n'
+                    f'How to fix:\n'
+                    f'1. Go to https://console.groq.com/keys\n'
+                    f'2. Click "Create API Key" → copy the FULL key\n'
+                    f'3. Paste it in Settings → Document Intelligence → Groq API Key\n'
+                    f'4. Click Save FIRST, then Test Connection\n\n'
+                    f'Note: Groq keys start with "gsk_" and are ~56 characters long.\n'
+                    f'Make sure you copied the entire key — no extra spaces.'
+                ),
+                'models': [],
+            }
+        except ProviderRateLimitError:
+            # Rate limit means the key IS valid — Groq accepted it
+            return {
+                'ok': True,
+                'message': f'Groq key is valid (rate limited but working). (key: {key_hint})',
+                'models': [m[0] for m in self.AVAILABLE_MODELS],
+            }
         except Exception as exc:
-            return {'ok': False, 'message': f'Cannot reach Groq: {exc}', 'models': []}
+            return {
+                'ok': False,
+                'message': (
+                    f'Cannot reach Groq: {exc}\n\n'
+                    f'Check your internet connection and try again.\n'
+                    f'Key hint: {key_hint}'
+                ),
+                'models': [],
+            }
 
     def extract(self, system_prompt: str, user_message: str, model: str) -> str:
         effective_model = model or self.DEFAULT_MODEL
@@ -464,13 +509,14 @@ class OpenAIProvider(AIProvider):
     DEFAULT_TIMEOUT = 60
 
     def __init__(self, api_key: str):
-        if not api_key:
+        cleaned = (api_key or '').strip()
+        if not cleaned:
             raise ProviderAuthError(
                 'OpenAI API key is not configured. '
                 'Get one at https://platform.openai.com/api-keys '
                 'then go to Settings → Document Intelligence.'
             )
-        self._api_key = api_key
+        self._api_key = cleaned
 
     def ping(self) -> dict:
         url = f'{self.BASE_URL}/models'
@@ -592,13 +638,14 @@ class AnthropicProvider(AIProvider):
     DEFAULT_TIMEOUT = 60
 
     def __init__(self, api_key: str):
-        if not api_key:
+        cleaned = (api_key or '').strip()
+        if not cleaned:
             raise ProviderAuthError(
                 'Anthropic API key is not configured. '
                 'Get one at https://console.anthropic.com '
                 'then go to Settings → Document Intelligence.'
             )
-        self._api_key = api_key
+        self._api_key = cleaned
 
     def ping(self) -> dict:
         # Use the anthropic SDK if available; otherwise try a lightweight token-count call

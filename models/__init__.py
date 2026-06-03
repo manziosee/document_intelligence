@@ -1,3 +1,4 @@
+from . import ir_ui_view_patch
 from . import missing_models
 from . import document_record
 from . import extraction_template

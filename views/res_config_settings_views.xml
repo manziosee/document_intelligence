@@ -26,7 +26,7 @@
                         <div class="col-12 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_extraction_tier" string="How should documents be processed?"/>
+                                <label for="doc_intel_extraction_tier" string="How should documents be processed?" class="o_form_label"/>
                                 <div class="text-muted mb8">
                                     <strong>Rule-Based</strong> works immediately with no setup — great for getting started.
                                     Upgrade to <strong>Local AI</strong> (Ollama, free) or <strong>Cloud AI</strong> when you need higher accuracy.
@@ -190,7 +190,7 @@
                              invisible="doc_intel_extraction_tier != 'ollama'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_ollama_url" string="Ollama Server URL"/>
+                                <label for="doc_intel_ollama_url" string="Ollama Server URL" class="o_form_label"/>
                                 <div class="text-muted">
                                     Where Ollama is running. Default is
                                     <code>http://localhost:11434</code> for local installs.
@@ -205,7 +205,7 @@
                              invisible="doc_intel_extraction_tier != 'ollama'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_ollama_model" string="Ollama Model"/>
+                                <label for="doc_intel_ollama_model" string="Ollama Model" class="o_form_label"/>
                                 <div class="text-muted">
                                     Any model you pulled with <code>ollama pull</code>.
                                     Recommended: <code>llama3</code>, <code>llama3.1:8b</code>, <code>mistral</code>, <code>qwen2</code>
@@ -241,7 +241,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_ai_provider" string="Cloud AI Provider"/>
+                                <label for="doc_intel_ai_provider" string="Cloud AI Provider" class="o_form_label"/>
                                 <div class="text-muted">
                                     Groq is fastest with a free tier. OpenAI and Anthropic offer the highest accuracy.
                                 </div>
@@ -261,7 +261,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'groq'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_groq_api_key" string="Groq API Key"/>
+                                <label for="doc_intel_groq_api_key" string="Groq API Key" class="o_form_label"/>
                                 <div class="text-muted">
                                     Free tier available — get your key at
                                     <a href="https://console.groq.com/keys" target="_blank">
@@ -279,7 +279,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'groq'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_groq_model" string="Groq Model"/>
+                                <label for="doc_intel_groq_model" string="Groq Model" class="o_form_label"/>
                                 <div class="text-muted">
                                     <code>llama-3.3-70b-versatile</code> — recommended |
                                     <code>mixtral-8x7b-32768</code> — long documents
@@ -300,7 +300,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'openai'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_openai_api_key" string="OpenAI API Key"/>
+                                <label for="doc_intel_openai_api_key" string="OpenAI API Key" class="o_form_label"/>
                                 <div class="text-muted">
                                     Get your key at
                                     <a href="https://platform.openai.com/api-keys" target="_blank">
@@ -318,7 +318,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'openai'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_openai_model" string="OpenAI Model"/>
+                                <label for="doc_intel_openai_model" string="OpenAI Model" class="o_form_label"/>
                                 <div class="text-muted">
                                     <code>gpt-4o-mini</code> — fast &amp; cheap |
                                     <code>gpt-4o</code> — best accuracy
@@ -339,7 +339,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'anthropic'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_anthropic_api_key" string="Anthropic API Key"/>
+                                <label for="doc_intel_anthropic_api_key" string="Anthropic API Key" class="o_form_label"/>
                                 <div class="text-muted">
                                     Get your key at
                                     <a href="https://console.anthropic.com/" target="_blank">
@@ -357,7 +357,7 @@
                              invisible="doc_intel_extraction_tier != 'cloud' or doc_intel_ai_provider != 'anthropic'">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_anthropic_model" string="Anthropic Model"/>
+                                <label for="doc_intel_anthropic_model" string="Anthropic Model" class="o_form_label"/>
                                 <div class="text-muted">
                                     <code>claude-haiku-4-5-20251001</code> — fast &amp; cheap |
                                     <code>claude-sonnet-4-6</code> — balanced
@@ -391,7 +391,7 @@
                         <div class="col-12 col-lg-6 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_tesseract_lang" string="Tesseract OCR Language"/>
+                                <label for="doc_intel_tesseract_lang" string="Tesseract OCR Language" class="o_form_label"/>
                                 <div class="text-muted">
                                     Language code(s) for Tesseract. Use <code>+</code> for multiple.
                                     Example: <code>eng+fra+kin</code>.
@@ -427,7 +427,7 @@
                         <div class="col-12 col-lg-6 o_setting_box">
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
-                                <label for="doc_intel_batch_size" string="Batch Processing Size"/>
+                                <label for="doc_intel_batch_size" string="Batch Processing Size" class="o_form_label"/>
                                 <div class="text-muted">
                                     Max documents to process in a single batch operation.
                                 </div>
@@ -459,7 +459,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_enable_auto_approval" string="Enable Auto-Approval"/>
+                                 <label for="doc_intel_enable_auto_approval" string="Enable Auto-Approval" class="o_form_label"/>
                                  <div class="text-muted">
                                      Automatically create vendor bills without manual review if confidence and amount conditions are met.
                                  </div>
@@ -472,7 +472,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_approval_confidence" string="Min Confidence %"/>
+                                 <label for="doc_intel_auto_approval_confidence" string="Min Confidence %" class="o_form_label"/>
                                  <div class="content-group mt8">
                                      <field name="doc_intel_auto_approval_confidence" class="col-lg-4"/>
                                  </div>
@@ -482,7 +482,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_approval_amount" string="Max Amount for Auto-Approval"/>
+                                 <label for="doc_intel_auto_approval_amount" string="Max Amount for Auto-Approval" class="o_form_label"/>
                                  <div class="text-muted">
                                      Invoices above this amount (in company currency) require manual review.
                                  </div>
@@ -500,7 +500,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_enable_line_items" string="Extract Line Items"/>
+                                 <label for="doc_intel_enable_line_items" string="Extract Line Items" class="o_form_label"/>
                                  <div class="text-muted">
                                      Extract individual product lines from invoices and receipts.
                                  </div>
@@ -513,7 +513,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_line_item_confidence_threshold" string="Line Item Confidence Threshold"/>
+                                 <label for="doc_intel_line_item_confidence_threshold" string="Line Item Confidence Threshold" class="o_form_label"/>
                                  <div class="content-group mt8">
                                      <field name="doc_intel_line_item_confidence_threshold" class="col-lg-4"/>
                                  </div>
@@ -528,7 +528,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_currency_conversion" string="Auto Currency Conversion"/>
+                                 <label for="doc_intel_auto_currency_conversion" string="Auto Currency Conversion" class="o_form_label"/>
                                  <div class="text-muted">
                                      Use Odoo's exchange rates to convert foreign currency amounts.
                                  </div>
@@ -541,7 +541,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_default_currency_id" string="Default Foreign Currency"/>
+                                 <label for="doc_intel_default_currency_id" string="Default Foreign Currency" class="o_form_label"/>
                                  <div class="text-muted">
                                      Assumed currency if detection fails (e.g., RWF for Rwanda).
                                  </div>
@@ -559,7 +559,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_create_partners" string="Auto-Create Unknown Vendors"/>
+                                 <label for="doc_intel_auto_create_partners" string="Auto-Create Unknown Vendors" class="o_form_label"/>
                                  <div class="text-muted">
                                      Create a new vendor contact if the extracted vendor is not found in Odoo.
                                  </div>
@@ -577,7 +577,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_tax_detection" string="Auto Tax Detection"/>
+                                 <label for="doc_intel_auto_tax_detection" string="Auto Tax Detection" class="o_form_label"/>
                                  <div class="text-muted">
                                      Automatically detect VAT/tax rates and apply matching account.tax records.
                                  </div>
@@ -590,7 +590,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_default_tax_id" string="Default VAT Tax"/>
+                                 <label for="doc_intel_default_tax_id" string="Default VAT Tax" class="o_form_label"/>
                                  <div class="text-muted">
                                      Default purchase tax to apply when tax is detected but not mapped.
                                  </div>
@@ -603,7 +603,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_tax_rate_mapping" string="Tax Rate Mapping"/>
+                                 <label for="doc_intel_tax_rate_mapping" string="Tax Rate Mapping" class="o_form_label"/>
                                  <div class="text-muted">
                                      JSON map: {"18": "VAT 18%", "15": "VAT 15%"}
                                  </div>
@@ -621,7 +621,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_enable_duplicate_detection" string="Enable Duplicate Detection"/>
+                                 <label for="doc_intel_enable_duplicate_detection" string="Enable Duplicate Detection" class="o_form_label"/>
                                  <div class="text-muted">
                                      Prevent processing the same invoice twice via file hash.
                                  </div>
@@ -634,7 +634,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_duplicate_action" string="Duplicate Invoice Action"/>
+                                 <label for="doc_intel_duplicate_action" string="Duplicate Invoice Action" class="o_form_label"/>
                                  <div class="content-group mt8">
                                      <field name="doc_intel_duplicate_action" class="col-lg-6"/>
                                  </div>
@@ -649,7 +649,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_product_match_fuzziness" string="Product Name Match Threshold %"/>
+                                 <label for="doc_intel_product_match_fuzziness" string="Product Name Match Threshold %" class="o_form_label"/>
                                  <div class="text-muted">
                                      Minimum similarity (0-100) for fuzzy product matching.
                                  </div>
@@ -662,7 +662,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_create_products" string="Auto-Create Unknown Products"/>
+                                 <label for="doc_intel_auto_create_products" string="Auto-Create Unknown Products" class="o_form_label"/>
                                  <div class="text-muted">
                                      Create a new service product if line item description doesn't match any existing product.
                                  </div>
@@ -675,7 +675,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_unknown_product_category_id" string="Category for Auto-Created Products"/>
+                                 <label for="doc_intel_unknown_product_category_id" string="Category for Auto-Created Products" class="o_form_label"/>
                                  <div class="content-group mt8">
                                      <field name="doc_intel_unknown_product_category_id" class="col-lg-6"/>
                                  </div>
@@ -685,7 +685,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_default_product_id" string="Default Fallback Product"/>
+                                 <label for="doc_intel_default_product_id" string="Default Fallback Product" class="o_form_label"/>
                                  <div class="text-muted">
                                      Product to use when no product match is found.
                                  </div>
@@ -703,7 +703,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_enable_approval_workflow" string="Enable Approval Workflow"/>
+                                 <label for="doc_intel_enable_approval_workflow" string="Enable Approval Workflow" class="o_form_label"/>
                                  <div class="text-muted">
                                      Route high-value invoices to managers for approval before posting.
                                  </div>
@@ -716,7 +716,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_approval_threshold" string="Approval Threshold"/>
+                                 <label for="doc_intel_approval_threshold" string="Approval Threshold" class="o_form_label"/>
                                  <div class="text-muted">
                                      Invoices exceeding this amount require manager approval.
                                  </div>
@@ -729,7 +729,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_post_approved" string="Auto-Post Approved Bills"/>
+                                 <label for="doc_intel_auto_post_approved" string="Auto-Post Approved Bills" class="o_form_label"/>
                                  <div class="text-muted">
                                      Automatically post vendor bills after approval (skip draft).
                                  </div>
@@ -747,7 +747,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_expense_product_id" string="Default Expense Product"/>
+                                 <label for="doc_intel_expense_product_id" string="Default Expense Product" class="o_form_label"/>
                                  <div class="text-muted">
                                      Product used for expense lines without a matched product.
                                  </div>
@@ -760,7 +760,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_expense_creation" string="Auto-Create Expense Claims"/>
+                                 <label for="doc_intel_auto_expense_creation" string="Auto-Create Expense Claims" class="o_form_label"/>
                                  <div class="text-muted">
                                      Automatically create expense claims when receipt documents are approved.
                                  </div>
@@ -778,7 +778,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_email_inbound_enabled" string="Enable Email Inbound Processing"/>
+                                 <label for="doc_intel_email_inbound_enabled" string="Enable Email Inbound Processing" class="o_form_label"/>
                                  <div class="text-muted">
                                      Automatically process attachments from incoming emails via fetchmail.
                                  </div>
@@ -791,7 +791,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_email_processor_user_id" string="Email Processor User"/>
+                                 <label for="doc_intel_email_processor_user_id" string="Email Processor User" class="o_form_label"/>
                                  <div class="text-muted">
                                      User account used to process email attachments (requires DI permissions).
                                  </div>
@@ -809,7 +809,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_validate_dates" string="Validate Date Ranges"/>
+                                 <label for="doc_intel_validate_dates" string="Validate Date Ranges" class="o_form_label"/>
                                  <div class="text-muted">
                                      Flag invoices with future dates or dates too old.
                                  </div>
@@ -822,7 +822,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_validate_amounts" string="Validate Amount Positivity"/>
+                                 <label for="doc_intel_validate_amounts" string="Validate Amount Positivity" class="o_form_label"/>
                                  <div class="text-muted">
                                      Ensure extracted totals and line amounts are positive numbers.
                                  </div>
@@ -835,7 +835,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_require_vendor" string="Require Vendor Name"/>
+                                 <label for="doc_intel_require_vendor" string="Require Vendor Name" class="o_form_label"/>
                                  <div class="text-muted">
                                      Reject documents without a detectable vendor name.
                                  </div>
@@ -853,7 +853,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_enable_vendor_learning" string="Enable Vendor-Specific Learning"/>
+                                 <label for="doc_intel_enable_vendor_learning" string="Enable Vendor-Specific Learning" class="o_form_label"/>
                                  <div class="text-muted">
                                      Track extraction patterns per vendor to improve future extractions.
                                  </div>
@@ -871,7 +871,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_webhook_enabled" string="Enable Webhook Notifications"/>
+                                 <label for="doc_intel_webhook_enabled" string="Enable Webhook Notifications" class="o_form_label"/>
                                  <div class="text-muted">
                                      Send POST notifications to a webhook when documents are processed.
                                  </div>
@@ -884,7 +884,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_webhook_url" string="Webhook URL"/>
+                                 <label for="doc_intel_webhook_url" string="Webhook URL" class="o_form_label"/>
                                  <div class="content-group mt8">
                                      <field name="doc_intel_webhook_url" class="col-lg-10"/>
                                  </div>
@@ -899,7 +899,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_keep_raw_file" string="Keep Original File"/>
+                                 <label for="doc_intel_keep_raw_file" string="Keep Original File" class="o_form_label"/>
                                  <div class="text-muted">
                                      Store the original uploaded file in Odoo attachments.
                                  </div>
@@ -912,7 +912,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_auto_cleanup_days" string="Auto-Cleanup After Days"/>
+                                 <label for="doc_intel_auto_cleanup_days" string="Auto-Cleanup After Days" class="o_form_label"/>
                                  <div class="text-muted">
                                      Automatically delete DI records older than this many days (0=never).
                                  </div>
@@ -930,7 +930,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_scheduled_extraction_enabled" string="Enable Scheduled Email Extraction"/>
+                                 <label for="doc_intel_scheduled_extraction_enabled" string="Enable Scheduled Email Extraction" class="o_form_label"/>
                                  <div class="text-muted">
                                      Allow recurring processing of email attachments.
                                  </div>
@@ -943,7 +943,7 @@
                          <div class="col-12 col-lg-6 o_setting_box">
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
-                                 <label for="doc_intel_default_schedule_interval" string="Default Schedule Interval (hours)"/>
+                                 <label for="doc_intel_default_schedule_interval" string="Default Schedule Interval (hours)" class="o_form_label"/>
                                  <div class="content-group mt8">
                                      <field name="doc_intel_default_schedule_interval" class="col-lg-4"/>
                                  </div>

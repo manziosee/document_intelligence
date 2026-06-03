@@ -389,7 +389,8 @@ class GroqProvider(AIProvider):
                         {'role': 'user', 'content': user_message},
                     ],
                     temperature=0.0,
-                    max_tokens=2000,
+                    max_tokens=4096,
+                    response_format={'type': 'json_object'},
                 )
                 return response.choices[0].message.content
             except RateLimitError as exc:

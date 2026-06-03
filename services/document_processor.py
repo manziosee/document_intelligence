@@ -98,58 +98,81 @@ class DocumentProcessor:
 
     # ── AI prompt helpers ─────────────────────────────────────────────────────
 
-    _AUTO_SYSTEM_PROMPT = """\
-You are a document intelligence AI. Analyze the raw OCR text and extract ALL meaningful data.
-The text may be noisy, garbled, or have alignment issues from OCR — do your best to reconstruct the correct values.
-Return ONLY a valid JSON object (no markdown fences, no extra text) with these keys:
+    _AUTO_SYSTEM_PROMPT = (
+        "You are a document data extraction specialist. Extract structured data from OCR text.\n"
+        "The text may have alignment or formatting issues from scanning — use context clues to recover values.\n"
+        "Return a valid JSON object. Omit any field not present in the document.\n\n"
+        "FIELD-BY-FIELD EXTRACTION GUIDE:\n\n"
+        "vendor_name\n"
+        "  The company or person who ISSUED/SENT the document (seller, supplier, service provider).\n"
+        "  Look for: company name at the very top, 'From:', 'Supplier:', 'Issued by:', 'Sold by:'.\n"
+        "  NOT the recipient, buyer, or 'Bill To' party. NOT just an address or PO Box.\n\n"
+        "reference_number\n"
+        "  The unique ID of this specific document.\n"
+        "  Labels: 'Invoice No', 'Invoice #', 'Invoice Number', 'Ref:', 'Reference:', 'Reference No',\n"
+        "  'Bill No', 'Receipt No', 'PO Number', 'Order No', 'Quotation No', 'Doc No', 'N°', '#', 'No.'.\n"
+        "  Format hints: INV-2024-001 | REF/24/0123 | 2024/INV/00123 | REC-00456\n"
+        "  Do NOT use a date or TIN/VAT number as the reference.\n\n"
+        "document_date\n"
+        "  Date the document was issued. Format: YYYY-MM-DD.\n"
+        "  Labels: 'Invoice Date', 'Date:', 'Date of Issue', 'Issued:', 'Document Date'.\n\n"
+        "total_amount\n"
+        "  The FINAL amount to pay/paid. Usually the LARGEST amount on the document.\n"
+        "  Labels: 'Total', 'Grand Total', 'Total Amount', 'Amount Due', 'Balance Due',\n"
+        "  'Net Total', 'Total Payable', 'Amount Payable', 'Total TTC', 'Montant Total'.\n"
+        "  Return as plain number: 1234567.89 — NO commas, NO currency symbols, NO spaces.\n"
+        "  Do NOT use a subtotal or line item amount as the total.\n\n"
+        "currency\n"
+        "  3-letter ISO code. Rwanda: RWF (also Rwf, FRW, Frw). Others: USD, EUR, GBP, KES.\n\n"
+        "tax_amount\n"
+        "  The VAT/tax AMOUNT in currency (not the rate %). Labels: 'VAT', 'TVA', 'Tax Amount', 'VAT Amount'.\n"
+        "  Return as plain number: 195652.17\n\n"
+        "tax_rate\n"
+        "  Tax percentage. Labels: 'VAT Rate', '18%', '15%'. Return as plain number: 18.0\n\n"
+        "contact_phone\n"
+        "  Phone number anywhere in the document. Labels: 'Tel:', 'Phone:', 'Mobile:', 'Cell:', '+250', '07'.\n"
+        "  Keep as written including country code: +250788123456 or 0788 123 456.\n\n"
+        "contact_email\n"
+        "  Any email address (user@domain.com). Search the full document.\n\n"
+        "contact_name\n"
+        "  Recipient/customer name the document is addressed TO (Bill To, Sold To).\n\n"
+        "contact_address\n"
+        "  Full postal address (street, city, country). Combine multi-line into one string.\n\n"
+        "vat_number\n"
+        "  VAT/TIN. Labels: 'TIN:', 'VAT Reg No:', 'VAT No:', 'Tax ID:'. Rwanda TIN = 9 digits.\n\n"
+        "iban\n"
+        "  Bank IBAN starting with 2 country-code letters then digits.\n\n"
+        "swift\n"
+        "  SWIFT/BIC code. Labels: 'SWIFT:', 'BIC:'. 8 or 11 uppercase alphanumeric characters.\n\n"
+        "bank_ref\n"
+        "  Bank transaction or statement reference number.\n\n"
+        "line_items\n"
+        "  Array of product/service rows from the invoice body table.\n"
+        "  One object per row: {\"description\": \"...\", \"quantity\": 1.0, \"unit_price\": 0.0, \"total\": 0.0}\n"
+        "  Scan ALL pages. Extract EVERY row. Do not skip or merge rows.\n\n"
+        "document_type\n"
+        "  One of: invoice | proof_of_payment | receipt | cv | contract | proforma | other\n\n"
+        "suggested_action\n"
+        "  One of: create_invoice | create_contact | create_applicant | create_expense_claim | review | none\n\n"
+        "confidence  — float 0.0-1.0 overall confidence\n"
+        "notes       — one short sentence about the document or any issues\n"
+    )
 
-  document_type  : one of invoice, proof_of_payment, receipt, cv, contract, proforma, other
-                   Use proof_of_payment for payment confirmations, bank transfer receipts,
-                   SWIFT confirmations, remittance advice, and any document confirming a
-                   payment was made (not requesting payment).
-  vendor_name    : supplier/issuer company or person name (NOT the recipient)
-  reference_number : document reference, invoice number, or PO number
-  document_date  : date in YYYY-MM-DD format
-  total_amount   : numeric total amount due or paid (no currency symbol, no commas)
-  currency       : 3-letter ISO currency code (e.g. RWF, USD, EUR)
-  tax_amount     : numeric tax/VAT amount
-  tax_rate       : numeric tax rate as a percentage (e.g. 18.0 for 18%)
-  contact_name   : recipient / bill-to contact person name
-  contact_phone  : phone number (with country code if present)
-  contact_email  : email address
-  contact_address: full postal address (street, city, country)
-  vat_number     : VAT registration or TIN number
-  iban           : bank account IBAN
-  swift          : SWIFT/BIC code
-  bank_ref       : bank transaction or statement reference
-  line_items     : array of objects — extract EVERY product/service row, one object per line:
-                     { "description": "...", "quantity": 1, "unit_price": 0.0, "total": 0.0 }
-                   For multi-page documents, scan ALL pages for line items.
-                   Do NOT collapse multiple lines into one — preserve each row separately.
-  suggested_action: one of create_invoice, create_contact, update_invoice, create_applicant, create_expense_claim, review, none
-  confidence     : float 0.0-1.0 — how confident you are overall
-  notes          : one short sentence describing what you found or any issues
+    _CUSTOM_SYSTEM_PROMPT = (
+        "You are a document data extraction specialist. Extract only the fields listed in the user message.\n"
+        "The OCR text may have formatting issues — use context clues to recover values.\n"
+        "Return a valid JSON object with exactly those keys plus:\n"
+        "  confidence: float 0.0-1.0\n"
+        "  notes: one short sentence\n"
+    )
 
-RULES:
-- total_amount must be a plain number like 1234567.89, never a string like "1,234,567 RWF"
-- If a field is not present in the document, omit it from the JSON (do not include null values)
-- For line_items, include partial rows if some columns are missing — set missing numbers to 0
-- When OCR text is garbled, use context clues (nearby labels, totals, column positions) to recover the value
-"""
-
-    _CUSTOM_SYSTEM_PROMPT = """\
-You are a document intelligence AI. Extract only the fields listed in the user message.
-Return ONLY a valid JSON object with exactly those keys plus:
-  confidence: float 0.0-1.0
-  notes     : short processing note
-"""
-
-    _TEMPLATE_SYSTEM_PROMPT = """\
-You are a document intelligence AI. Extract exactly the fields defined in the template below.
-Return ONLY a valid JSON object with those keys plus:
-  confidence: float 0.0-1.0
-  notes     : short processing note
-"""
+    _TEMPLATE_SYSTEM_PROMPT = (
+        "You are a document data extraction specialist. Extract exactly the fields defined in the template.\n"
+        "The OCR text may have formatting issues — use context clues to recover values.\n"
+        "Return a valid JSON object with those keys plus:\n"
+        "  confidence: float 0.0-1.0\n"
+        "  notes: one short sentence\n"
+    )
 
     def _build_prompt(self, mode, fields, template, extra_prompt, raw_text):
         if mode == 'custom' and fields:
@@ -406,6 +429,10 @@ Return ONLY a valid JSON object with those keys plus:
         confidence = float(data.pop('confidence', 0.75)) * 100
         notes = data.pop('notes', '')
 
+        # Normalise AI output — clean amounts, phones, etc.
+        data = self._normalize_fields(data)
+
+        # Fill any gaps the AI missed with rule-based results
         for key, value in custom_rule_results.items():
             if key not in data or not data[key]:
                 data[key] = value
@@ -422,6 +449,136 @@ Return ONLY a valid JSON object with those keys plus:
 
         # ── Auto-routing by confidence threshold ──────────────────────────────
         self._apply_auto_approval(record)
+
+    # ── Post-extraction field normalisation ───────────────────────────────────
+
+    @staticmethod
+    def _normalize_fields(data: dict) -> dict:
+        """
+        Clean up AI-extracted field values so they are ready for populate_from_extracted().
+
+        Problems this fixes:
+        - total_amount / tax_amount returned as strings with commas or currency symbols
+          ("1,234,000 RWF" → 1234000.0)
+        - tax_rate returned as "18%" instead of 18.0
+        - contact_phone returned with extra spaces or labels ("Tel: +250 788 123456")
+        - vendor_name / contact_name with trailing punctuation
+        - reference_number accidentally set to a date or TIN number
+        - line_items with string prices instead of floats
+        """
+        import re
+
+        def _to_float(val):
+            if val is None:
+                return None
+            if isinstance(val, (int, float)):
+                return float(val) if val >= 0 else None
+            s = str(val).strip()
+            # Strip currency symbols and ISO codes
+            s = re.sub(r'[A-Z]{3}\s*', '', s, flags=re.IGNORECASE)  # RWF, USD, etc.
+            s = re.sub(r'[$€£¥₦₵]', '', s)
+            # Remove commas and spaces used as thousands separators
+            # Handle "1,234,567.89" → "1234567.89"
+            # Handle "1.234.567,89" → "1234567.89"
+            if re.match(r'^\d{1,3}(?:\.\d{3})+,\d{1,2}$', s.replace(' ', '')):
+                s = s.replace('.', '').replace(',', '.')
+            elif re.match(r'^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$', s.replace(' ', '')):
+                s = s.replace(',', '')
+            else:
+                s = re.sub(r'[,\s]', '', s)
+            try:
+                v = float(s)
+                return v if v >= 0 else None
+            except (ValueError, TypeError):
+                return None
+
+        def _clean_phone(val):
+            if not val:
+                return val
+            s = str(val).strip()
+            # Strip common labels that the AI includes
+            s = re.sub(r'^(?:tel|phone|mobile|mob|cell|contact|tél)\s*[:\-]?\s*', '', s, flags=re.IGNORECASE)
+            s = s.strip()
+            # Keep digits, +, spaces, dashes, parentheses
+            cleaned = re.sub(r'[^\d\+\s\-\(\)]', '', s).strip()
+            # Must have at least 7 digits
+            digits_only = re.sub(r'\D', '', cleaned)
+            return cleaned if len(digits_only) >= 7 else val
+
+        def _clean_name(val):
+            if not val:
+                return val
+            return str(val).strip().rstrip('.,;:')
+
+        def _clean_ref(val):
+            if not val:
+                return val
+            s = str(val).strip()
+            # Reject if it looks exactly like a date
+            if re.match(r'^\d{4}[-/]\d{2}[-/]\d{2}$', s):
+                return None
+            if re.match(r'^\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}$', s):
+                return None
+            # Reject if it's a bare 9-digit Rwanda TIN
+            if re.match(r'^\d{9}$', s):
+                return None
+            return s if len(s) >= 2 else None
+
+        # Numeric fields
+        for field in ('total_amount', 'tax_amount'):
+            if field in data:
+                val = _to_float(data[field])
+                if val:
+                    data[field] = val
+                else:
+                    data.pop(field, None)
+
+        # tax_rate: strip "%" if present
+        if 'tax_rate' in data:
+            s = str(data['tax_rate']).replace('%', '').strip()
+            try:
+                data['tax_rate'] = float(s)
+            except (ValueError, TypeError):
+                data.pop('tax_rate', None)
+
+        # Phone
+        if 'contact_phone' in data:
+            data['contact_phone'] = _clean_phone(data['contact_phone'])
+
+        # Names
+        for field in ('vendor_name', 'contact_name'):
+            if field in data:
+                data[field] = _clean_name(data[field])
+
+        # Reference number
+        if 'reference_number' in data:
+            cleaned = _clean_ref(data['reference_number'])
+            if cleaned:
+                data['reference_number'] = cleaned
+            else:
+                data.pop('reference_number', None)
+
+        # Line items: ensure numeric fields are floats
+        if 'line_items' in data and isinstance(data['line_items'], list):
+            clean_items = []
+            for item in data['line_items']:
+                if not isinstance(item, dict):
+                    continue
+                desc = str(item.get('description', '')).strip()
+                if not desc:
+                    continue
+                qty = _to_float(item.get('quantity')) or 1.0
+                unit_price = _to_float(item.get('unit_price')) or 0.0
+                total = _to_float(item.get('total')) or 0.0
+                clean_items.append({
+                    'description': desc,
+                    'quantity': qty,
+                    'unit_price': unit_price,
+                    'total': total,
+                })
+            data['line_items'] = clean_items
+
+        return data
 
     # ── Tier 1 helper ─────────────────────────────────────────────────────────
 

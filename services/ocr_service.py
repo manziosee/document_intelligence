@@ -159,7 +159,18 @@ def _pdf_text_layer(raw_bytes: bytes) -> str:
     # ── pdfminer.six (best quality, layout-aware) ─────────────────────────────
     try:
         from pdfminer.high_level import extract_text as _pdfminer
-        text = _pdfminer(io.BytesIO(raw_bytes))
+        from pdfminer.layout import LAParams
+        # Tuned parameters: tighter word/line margins preserve table column separation
+        params = LAParams(
+            line_overlap=0.5,
+            char_margin=2.0,
+            line_margin=0.5,
+            word_margin=0.1,
+            boxes_flow=0.5,
+            detect_vertical=False,
+            all_texts=True,
+        )
+        text = _pdfminer(io.BytesIO(raw_bytes), laparams=params)
         if text and text.strip():
             _logger.info('pdfminer extracted %d chars', len(text))
             return text
@@ -174,7 +185,11 @@ def _pdf_text_layer(raw_bytes: bytes) -> str:
         reader = PdfReader(io.BytesIO(raw_bytes))
         pages = []
         for i, page in enumerate(reader.pages, 1):
-            pt = page.extract_text() or ''
+            # extract_text with layout mode preserves column spacing better
+            try:
+                pt = page.extract_text(extraction_mode='layout') or ''
+            except TypeError:
+                pt = page.extract_text() or ''
             if pt.strip():
                 pages.append(f'=== PAGE {i} ===\n{pt}')
         text = '\n\n'.join(pages)
@@ -213,7 +228,8 @@ def _pdf_ocr(raw_bytes: bytes, lang: str) -> tuple[str, str | None]:
         pages_text: list[str] = []
 
         for i, page in enumerate(doc, 1):
-            pix = page.get_pixmap(dpi=200)
+            # 300 DPI gives Tesseract/easyocr enough resolution for small text
+            pix = page.get_pixmap(dpi=300)
             img_bytes = pix.tobytes('png')
 
             page_text, _ = _ocr_image_bytes(img_bytes, lang)
@@ -236,20 +252,69 @@ def _pdf_ocr(raw_bytes: bytes, lang: str) -> tuple[str, str | None]:
 
 # ── Image OCR (shared by image files and PDF page rendering) ──────────────────
 
+def _preprocess_image_for_ocr(img_bytes: bytes) -> bytes:
+    """
+    Enhance image quality before OCR:
+    - Upscale images smaller than 1000px wide to improve OCR on low-res scans
+    - Convert to grayscale (better contrast for Tesseract/easyocr)
+    - Apply contrast enhancement to make text stand out
+    Returns processed bytes (PNG), or original bytes if PIL not available.
+    """
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter, UnidentifiedImageError
+        try:
+            img = Image.open(io.BytesIO(img_bytes))
+        except (UnidentifiedImageError, Exception):
+            return img_bytes
+
+        # Upscale small images — OCR accuracy drops sharply below ~150 DPI equivalent
+        w, h = img.size
+        if w < 1000:
+            scale = max(2, 1000 // w)
+            img = img.resize((w * scale, h * scale), Image.LANCZOS)
+            _logger.debug('Image upscaled %dx (was %dx%d)', scale, w, h)
+
+        # Convert to grayscale for better OCR
+        if img.mode not in ('L', 'RGB'):
+            img = img.convert('RGB')
+        gray = img.convert('L')
+
+        # Moderate contrast boost — helps with faded or low-contrast scans
+        enhancer = ImageEnhance.Contrast(gray)
+        gray = enhancer.enhance(1.5)
+
+        # Slight sharpening to clean up blurry scans
+        gray = gray.filter(ImageFilter.SHARPEN)
+
+        buf = io.BytesIO()
+        gray.save(buf, format='PNG')
+        return buf.getvalue()
+    except ImportError:
+        return img_bytes
+    except Exception as exc:
+        _logger.debug('Image preprocessing failed (non-fatal): %s', exc)
+        return img_bytes
+
+
 def _ocr_image_bytes(img_bytes: bytes, lang: str) -> tuple[str, str | None]:
     """
     OCR a raw image byte string. Tries Tesseract first, then easyocr.
     Returns (text, error_message_or_None).
     """
+    # Preprocess image for better OCR accuracy
+    processed = _preprocess_image_for_ocr(img_bytes)
+
     # ── Tesseract (fastest, most accurate when installed) ─────────────────────
     try:
         import pytesseract
         from PIL import Image, UnidentifiedImageError
         try:
-            img = Image.open(io.BytesIO(img_bytes))
+            img = Image.open(io.BytesIO(processed))
         except UnidentifiedImageError:
             return '', 'Unrecognised image format'
-        text = pytesseract.image_to_string(img, lang=lang)
+        # OEM 3 = LSTM neural net, PSM 6 = assume uniform block of text
+        config = '--oem 3 --psm 6'
+        text = pytesseract.image_to_string(img, lang=lang, config=config)
         if text.strip():
             _logger.info('Tesseract OCR: %d chars', len(text))
             return text, None
@@ -266,7 +331,8 @@ def _ocr_image_bytes(img_bytes: bytes, lang: str) -> tuple[str, str | None]:
         easy_langs = _tess_lang_to_easy(lang)
         _logger.info('easyocr attempt with langs=%s', easy_langs)
         reader = easyocr.Reader(easy_langs, verbose=False)
-        results = reader.readtext(img_bytes)
+        # Pass preprocessed PNG bytes; easyocr accepts raw bytes directly
+        results = reader.readtext(processed)
         text = '\n'.join(item[1] for item in results if item[1].strip())
         if text.strip():
             _logger.info('easyocr: %d chars', len(text))
@@ -288,12 +354,36 @@ def _extract_docx(raw_bytes: bytes) -> str:
     try:
         from docx import Document
         doc = Document(io.BytesIO(raw_bytes))
-        parts = [p.text for p in doc.paragraphs if p.text.strip()]
+        parts: list[str] = []
+
+        # Headers and footers — company name and invoice number are often here
+        for section in doc.sections:
+            for hdr_para in section.header.paragraphs:
+                t = hdr_para.text.strip()
+                if t:
+                    parts.append(t)
+            for ftr_para in section.footer.paragraphs:
+                t = ftr_para.text.strip()
+                if t:
+                    parts.append(t)
+
+        # Body paragraphs
+        for p in doc.paragraphs:
+            if p.text.strip():
+                parts.append(p.text)
+
+        # Tables — use tab separator so rule-based extractor can split columns
         for table in doc.tables:
             for row in table.rows:
-                row_text = '\t'.join(c.text for c in row.cells if c.text.strip())
-                if row_text.strip():
-                    parts.append(row_text)
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                # Deduplicate merged cells (python-docx repeats merged cell text)
+                deduped = []
+                for cell in cells:
+                    if not deduped or cell != deduped[-1]:
+                        deduped.append(cell)
+                if deduped:
+                    parts.append('\t'.join(deduped))
+
         text = '\n'.join(parts)
         if text.strip():
             _logger.info('python-docx: %d chars', len(text))

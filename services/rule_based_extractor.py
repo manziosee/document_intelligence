@@ -43,7 +43,7 @@ _CURRENCY_RE = re.compile(
 
 # ── Numbers ───────────────────────────────────────────────────────────────────
 # Matches: 1,234,567  |  1 234 567  |  1.234.567  |  1234567  |  1,234.56
-_NUM = r'[\d]{1,3}(?:[,\.\s]\d{3})*(?:[,\.]\d{1,2})?|\d+'
+_NUM = r'[\d]{1,3}(?:[,\.\s]\d{3})+(?:[,\.]\d{1,2})?|\d{4,}'
 
 # Labelled total patterns — highest priority for amount extraction
 _TOTAL_LABEL_PATTERNS = [
@@ -216,8 +216,10 @@ _COMPANY_SUFFIXES = re.compile(
 _VENDOR_SKIP = re.compile(
     r'\b(?:invoice|receipt|proforma|pro.forma|quotation|contract|date|'
     r'bill\s+to|invoice\s+to|sold\s+to|ship\s+to|attention|attn|'
-    r'tel|fax|email|phone|mob|address|p\.?o\.?\s*box|po\s+box|'
-    r'ref|number|no\.|page|vat|tin|total|amount|due|payable|'
+    r'tel(?:ephone)?|fax|email|phone|mob(?:ile)?|'
+    r'p\.?o\.?\s*box|po\s+box|'
+    r'ref(?:erence)?|number|no\.|page|vat|tin|'
+    r'total|amount|due|payable|balance|'
     r'thank\s+you|regards|sincerely|to\s+whom)\b',
     re.IGNORECASE,
 )
@@ -675,50 +677,101 @@ def _extract_line_items(text: str) -> list[dict]:
     """
     Parse invoice line-item rows from text.
 
-    Supports two table layouts:
-    A) 4-column: Description | Qty | Unit Price | Total
-    B) 3-column: Description | Unit Price | Total
-    C) 2-column: Description | Amount
+    Supports four layouts produced by different OCR/parsers:
+    A) Tab-delimited  (DOCX tables, some pdfminer outputs)
+    B) 4-column space: Description   Qty   Unit Price   Total
+    C) 3-column space: Description   Unit Price   Total
+    D) 2-column space: Description   Amount
 
     We filter out rows that look like headers, totals or taxes.
     """
     items: list[dict] = []
-    # Find the body — skip header (top 5 lines) and look for table rows
-    body_lines = text.split('\n')
 
     _HEADER_SKIP = re.compile(
-        r'(?:description|qty|quantity|unit\s*price|amount|total|'
-        r'item|service|product|subtotal|vat|tax|discount)',
+        r'^\s*(?:description|item|service|product|particulars|'
+        r'qty|quantity|unit\s*price|unit\s*cost|rate|'
+        r'amount|total|subtotal|sub.?total|'
+        r'vat|tax|discount|s\.?no\.?|#)\s*$',
+        re.IGNORECASE,
+    )
+    _TOTAL_ROW = re.compile(
+        r'\b(?:grand\s*total|sub\s*total|subtotal|net\s*total|'
+        r'total\s*(?:amount|due|payable)?|balance\s*due|'
+        r'vat|tax|discount)\b',
         re.IGNORECASE,
     )
 
-    # Pattern: line has description text + 2-4 numbers at the end
-    # e.g. "Web Design Services      1      500,000      500,000"
+    body_text = text
+
+    # ── Layout A: tab-delimited (DOCX tables, some CSV-like exports) ──────────
+    tab_items: list[dict] = []
+    for line in body_text.splitlines():
+        if '\t' not in line:
+            continue
+        cols = [c.strip() for c in line.split('\t') if c.strip()]
+        if len(cols) < 2:
+            continue
+        desc = cols[0]
+        if not desc or _HEADER_SKIP.match(desc) or _TOTAL_ROW.search(desc):
+            continue
+        if len(desc) < 2:
+            continue
+        nums = [_clean_amount(c) for c in cols[1:]]
+        nums = [n for n in nums if n is not None and n > 0]
+        if not nums:
+            continue
+        if len(nums) >= 3:
+            qty, unit_price, total_cell = nums[0], nums[1], nums[2]
+            qty = qty if 0 < qty <= 100_000 else 1.0
+        elif len(nums) == 2:
+            unit_price, total_cell = nums[0], nums[1]
+            qty = round(total_cell / unit_price, 2) if unit_price > 0 else 1.0
+        else:
+            unit_price = nums[0]
+            qty = 1.0
+        tab_items.append({'description': desc, 'quantity': qty, 'unit_price': unit_price})
+
+    if tab_items:
+        return tab_items[:50]
+
+    # ── Layouts B/C/D: space-delimited (pdfminer, Tesseract output) ───────────
+    # Accept 2 or more spaces OR a single tab as the column separator.
+    _SEP = r'(?:\t|\s{2,})'
+
     _ITEM_RE_4 = re.compile(
-        r'^(.{4,60}?)\s{2,}'                       # description (min 2 spaces gap)
-        r'(\d[\d,\.\s]*)\s{2,}'                    # qty
-        r'(\d[\d,\.\s]*)\s{2,}'                    # unit price
-        r'(\d[\d,\.\s]*)\s*$',                     # total
+        r'^(.{3,70}?)' + _SEP +
+        r'(\d[\d,\.\s]{0,15})' + _SEP +
+        r'(\d[\d,\.\s]{0,15})' + _SEP +
+        r'(\d[\d,\.\s]{0,15})\s*$',
         re.MULTILINE,
     )
     _ITEM_RE_3 = re.compile(
-        r'^(.{4,60}?)\s{2,}'                       # description
-        r'(\d[\d,\.\s]*)\s{2,}'                    # unit price
-        r'(\d[\d,\.\s]*)\s*$',                     # total
+        r'^(.{3,70}?)' + _SEP +
+        r'(\d[\d,\.\s]{0,15})' + _SEP +
+        r'(\d[\d,\.\s]{0,15})\s*$',
         re.MULTILINE,
     )
     _ITEM_RE_2 = re.compile(
-        r'^(.{4,60}?)\s{2,}'                       # description
-        r'(\d[\d,\.]{3,})\s*$',                    # amount (at least 4 digits)
+        r'^(.{3,70}?)' + _SEP +
+        r'(\d[\d,\.]{3,})\s*$',
         re.MULTILINE,
     )
 
-    body_text = '\n'.join(body_lines)
+    def _is_desc_ok(desc: str) -> bool:
+        if not desc or len(desc) < 2:
+            return False
+        if _HEADER_SKIP.match(desc.strip()):
+            return False
+        if _TOTAL_ROW.search(desc):
+            return False
+        # Skip lines that are mostly digits (likely a misaligned number row)
+        digit_ratio = sum(c.isdigit() for c in desc) / max(len(desc), 1)
+        return digit_ratio < 0.6
 
-    # Try 4-column first
+    # Try 4-column
     for m in _ITEM_RE_4.finditer(body_text):
         desc = m.group(1).strip()
-        if _HEADER_SKIP.match(desc):
+        if not _is_desc_ok(desc):
             continue
         qty = _clean_amount(m.group(2))
         unit_price = _clean_amount(m.group(3))
@@ -726,52 +779,33 @@ def _extract_line_items(text: str) -> list[dict]:
         if qty is None or unit_price is None:
             continue
         if not (0 < qty <= 100_000):
-            continue
-        items.append({
-            'description': desc,
-            'quantity': qty,
-            'unit_price': unit_price or (total_cell / qty if total_cell and qty else 0),
-        })
+            qty = 1.0
+        items.append({'description': desc, 'quantity': qty, 'unit_price': unit_price})
 
-    # If we got nothing, try 3-column
+    # Try 3-column if nothing found
     if not items:
         for m in _ITEM_RE_3.finditer(body_text):
             desc = m.group(1).strip()
-            if _HEADER_SKIP.match(desc):
+            if not _is_desc_ok(desc):
                 continue
             unit_price = _clean_amount(m.group(2))
             total_cell = _clean_amount(m.group(3))
             if unit_price is None or total_cell is None:
                 continue
-            # Guess qty = total / unit_price when both nonzero
-            if unit_price > 0 and total_cell >= unit_price:
-                qty = round(total_cell / unit_price, 2)
-            else:
-                qty = 1.0
-            items.append({
-                'description': desc,
-                'quantity': qty,
-                'unit_price': unit_price,
-            })
+            qty = round(total_cell / unit_price, 2) if unit_price > 0 and total_cell >= unit_price else 1.0
+            items.append({'description': desc, 'quantity': qty, 'unit_price': unit_price})
 
-    # If still nothing, try 2-column
+    # Try 2-column if still nothing
     if not items:
         for m in _ITEM_RE_2.finditer(body_text):
             desc = m.group(1).strip()
-            if _HEADER_SKIP.match(desc):
-                continue
-            # Skip lines that look like grand totals
-            if re.search(r'\b(?:total|subtotal|vat|tax|balance)\b', desc, re.IGNORECASE):
+            if not _is_desc_ok(desc):
                 continue
             amount = _clean_amount(m.group(2))
             if amount and amount > 0:
-                items.append({
-                    'description': desc,
-                    'quantity': 1.0,
-                    'unit_price': amount,
-                })
+                items.append({'description': desc, 'quantity': 1.0, 'unit_price': amount})
 
-    return items[:50]  # cap at 50 lines
+    return items[:50]
 
 
 def _extract_line_items_multipage(text: str) -> list[dict]:

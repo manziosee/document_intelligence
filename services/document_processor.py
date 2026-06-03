@@ -99,35 +99,42 @@ class DocumentProcessor:
     # ── AI prompt helpers ─────────────────────────────────────────────────────
 
     _AUTO_SYSTEM_PROMPT = """\
-You are a document intelligence AI. Analyze the raw text and extract all meaningful data.
+You are a document intelligence AI. Analyze the raw OCR text and extract ALL meaningful data.
+The text may be noisy, garbled, or have alignment issues from OCR — do your best to reconstruct the correct values.
 Return ONLY a valid JSON object (no markdown fences, no extra text) with these keys:
+
   document_type  : one of invoice, proof_of_payment, receipt, cv, contract, proforma, other
                    Use proof_of_payment for payment confirmations, bank transfer receipts,
                    SWIFT confirmations, remittance advice, and any document confirming a
                    payment was made (not requesting payment).
-  vendor_name    : company or person name on the document
-  reference_number : document reference or invoice number
+  vendor_name    : supplier/issuer company or person name (NOT the recipient)
+  reference_number : document reference, invoice number, or PO number
   document_date  : date in YYYY-MM-DD format
-  total_amount   : numeric total (no currency symbol)
-  currency       : 3-letter ISO currency code
-  tax_amount     : numeric tax
-  tax_rate       : numeric tax rate as percentage (e.g., 18.0 for 18%)
-  contact_name   : contact person name
-  contact_phone  : phone number
+  total_amount   : numeric total amount due or paid (no currency symbol, no commas)
+  currency       : 3-letter ISO currency code (e.g. RWF, USD, EUR)
+  tax_amount     : numeric tax/VAT amount
+  tax_rate       : numeric tax rate as a percentage (e.g. 18.0 for 18%)
+  contact_name   : recipient / bill-to contact person name
+  contact_phone  : phone number (with country code if present)
   contact_email  : email address
-  contact_address: full address
-  vat_number     : VAT/Tax ID number
+  contact_address: full postal address (street, city, country)
+  vat_number     : VAT registration or TIN number
   iban           : bank account IBAN
   swift          : SWIFT/BIC code
-  bank_ref       : bank statement reference
-  line_items     : array of objects with keys: description, quantity, unit_price, tax_amount, tax_rate
+  bank_ref       : bank transaction or statement reference
+  line_items     : array of objects — extract EVERY product/service row, one object per line:
+                     { "description": "...", "quantity": 1, "unit_price": 0.0, "total": 0.0 }
+                   For multi-page documents, scan ALL pages for line items.
+                   Do NOT collapse multiple lines into one — preserve each row separately.
   suggested_action: one of create_invoice, create_contact, update_invoice, create_applicant, create_expense_claim, review, none
-  confidence     : float 0.0-1.0 how confident you are
-  notes          : short processing note
+  confidence     : float 0.0-1.0 — how confident you are overall
+  notes          : one short sentence describing what you found or any issues
 
-For line_items, include EVERY line with product/service description, quantity, unit price, and subtotal.
-For invoices, include ALL line rows from the body of the invoice.
-For receipts, extract expense-related fields.
+RULES:
+- total_amount must be a plain number like 1234567.89, never a string like "1,234,567 RWF"
+- If a field is not present in the document, omit it from the JSON (do not include null values)
+- For line_items, include partial rows if some columns are missing — set missing numbers to 0
+- When OCR text is garbled, use context clues (nearby labels, totals, column positions) to recover the value
 """
 
     _CUSTOM_SYSTEM_PROMPT = """\
@@ -565,11 +572,13 @@ Return ONLY a valid JSON object with those keys plus:
             'Return ONLY the raw extracted text — no commentary, no JSON, no markdown.'
         )
 
+        vision_model = settings.get('model', 'gpt-4o')
+
         all_text: list[str] = []
         for i, img_b64 in enumerate(images_b64):
             try:
                 page_text = self._ai_vision_single_image(
-                    provider_name, key, img_b64, _OCR_PROMPT,
+                    provider_name, key, img_b64, _OCR_PROMPT, vision_model,
                 )
                 if page_text:
                     all_text.append(page_text)
@@ -583,7 +592,7 @@ Return ONLY a valid JSON object with those keys plus:
         return ''
 
     def _ai_vision_single_image(
-        self, provider: str, key: str, img_b64: str, prompt: str
+        self, provider: str, key: str, img_b64: str, prompt: str, model: str = ''
     ) -> str:
         """Send one base64 PNG/JPG image to the provider's vision API, return extracted text."""
 
@@ -622,8 +631,8 @@ Return ONLY a valid JSON object with those keys plus:
                 raise RuntimeError(
                     f'anthropic package not installed. Run: pip install anthropic\nDetail: {exc}'
                 ) from exc
-            # Use configured model; fall back to haiku if it looks like a non-vision model
-            configured = settings.get('model', 'claude-haiku-4-5-20251001')
+            # Use the model passed in; fall back to haiku for any claude-2 non-vision model
+            configured = model or 'claude-haiku-4-5-20251001'
             vision_model = configured if 'claude-2' not in configured else 'claude-haiku-4-5-20251001'
             client = _anthropic.Anthropic(api_key=key)
             response = client.messages.create(

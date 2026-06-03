@@ -1,32 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!--
-        Cross-version parent-view patch (priority=1, applied before our main view).
-        Older Odoo 17 Docker images ship bare <label> tags (no 'for' and no
-        'o_form_label') inside base_setup.res_config_settings_view_form.
-        When our module inherits that view, Odoo's strict validator re-checks
-        the ENTIRE merged result and raises "Label tag must contain a 'for'".
-
-        optional="True" on the xpath makes Odoo silently skip this patch when
-        there are no bare labels (newer builds) instead of raising
-        "cannot be located".  On older builds that DO have bare labels, the
-        xpath finds and fixes them.  Result: works on every Odoo 17 version.
-    -->
-    <record id="view_di_fix_parent_labels" model="ir.ui.view">
-        <field name="name">res.config.settings.di.parent.label.compat</field>
-        <field name="model">res.config.settings</field>
-        <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
-        <field name="priority">1</field>
-        <field name="arch" type="xml">
-            <xpath expr="//label[not(@for) and not(contains(@class,'o_form_label'))]"
-                   position="attributes"
-                   optional="True">
-                <attribute name="class" add="o_form_label" separator=" "/>
-            </xpath>
-        </field>
-    </record>
-
     <record id="view_document_intelligence_config_form" model="ir.ui.view">
         <field name="name">res.config.settings.document.intelligence</field>
         <field name="model">res.config.settings</field>

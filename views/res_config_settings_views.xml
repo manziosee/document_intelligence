@@ -1,6 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <!--
+        Compatibility patch — applied BEFORE our main settings view (priority=1).
+        Older Odoo 17 builds (pre-17.0.3) shipped a <label> without a 'for'
+        attribute inside base_setup.res_config_settings_view_form.  When our
+        module inherits from that view, Odoo 17's strict validator re-checks the
+        entire merged result and raises "Label tag must contain a 'for'".
+
+        This low-priority view adds class="o_form_label" to every bare <label>
+        in the parent view so validation passes on ALL Odoo 17 point releases
+        (old and new).  On modern builds that have no bare labels, the xpath
+        simply finds nothing to patch — harmless.
+    -->
+    <record id="view_di_fix_parent_bare_labels" model="ir.ui.view">
+        <field name="name">res.config.settings.di.parent.label.compat</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
+        <field name="priority">1</field>
+        <field name="arch" type="xml">
+            <xpath expr="//label[not(@for) and not(contains(@class,'o_form_label'))]"
+                   position="attributes">
+                <attribute name="class" add="o_form_label" separator=" "/>
+            </xpath>
+        </field>
+    </record>
+
     <record id="view_document_intelligence_config_form" model="ir.ui.view">
         <field name="name">res.config.settings.document.intelligence</field>
         <field name="model">res.config.settings</field>
@@ -412,7 +437,8 @@
                             <div class="o_setting_left_pane"/>
                             <div class="o_setting_right_pane">
                                 <label for="doc_intel_default_extraction_mode"
-                                       string="Default Extraction Mode"/>
+                                       string="Default Extraction Mode"
+                                       class="o_form_label"/>
                                 <div class="content-group mt8">
                                     <field name="doc_intel_default_extraction_mode" widget="radio"/>
                                 </div>
@@ -441,7 +467,8 @@
                              <div class="o_setting_left_pane"/>
                              <div class="o_setting_right_pane">
                                  <label for="doc_intel_quota_warning_threshold"
-                                        string="Quota Warning Threshold (tokens/day)"/>
+                                        string="Quota Warning Threshold (tokens/day)"
+                                        class="o_form_label"/>
                                  <div class="text-muted">
                                      Log a warning when daily token usage exceeds this value.
                                  </div>

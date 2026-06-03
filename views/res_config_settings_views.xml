@@ -16,10 +16,6 @@
                         Configure your AI provider and API keys below.
                     </p>
 
-                    <!-- Hidden fields needed for invisible modifiers -->
-                    <field name="doc_intel_extraction_tier" invisible="1"/>
-                    <field name="doc_intel_ai_provider" invisible="1"/>
-
                     <div class="row mt16 o_settings_container">
 
                         <!-- ── Extraction Tier ────────────────────────────── -->

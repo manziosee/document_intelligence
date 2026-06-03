@@ -1,24 +1,23 @@
 """
 Pluggable AI provider abstraction — Tier 2 (Ollama) + Tier 3 (Cloud AI).
 
-Architecture
-------------
-  AIProvider          — abstract base: extract(), ping(), _parse_json()
-    OllamaProvider    — Tier 2: local, free, private (http://localhost:11434)
-    GroqProvider      — Tier 3: cloud, free tier, fast
-    OpenAIProvider    — Tier 3: cloud, highest accuracy
-    AnthropicProvider — Tier 3: cloud, excellent on complex docs
+ZERO HARD DEPENDENCIES — works with Python stdlib alone.
 
-Adding a new provider
----------------------
-  1. Subclass AIProvider, implement extract() and optionally ping()
-  2. Register in PROVIDER_REGISTRY
-  3. Add selection entry to res.config.settings.doc_intel_ai_provider
+Every provider has two code paths:
+  1. openai / anthropic package (if installed) — richer error messages
+  2. urllib fallback (always available) — works on a fresh Python install
+
+Users never need to run pip install to use Groq, OpenAI, or Ollama.
+The `openai` package is used automatically if present, otherwise urllib
+makes the same HTTP calls directly.
 """
 import json
 import logging
 import re
+import ssl
 import time
+import urllib.error
+import urllib.request
 
 _logger = logging.getLogger(__name__)
 
@@ -44,17 +43,59 @@ class ProviderQuotaError(RuntimeError):
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# Shared stdlib HTTP helper — used by all providers when openai pkg is absent
+# ════════════════════════════════════════════════════════════════════════════════
+
+def _http_post(url: str, payload: dict, headers: dict, timeout: int = 60) -> dict:
+    """
+    POST JSON to url, return parsed JSON response dict.
+
+    Raises:
+      ProviderAuthError     on HTTP 401/403
+      ProviderRateLimitError on HTTP 429
+      ProviderQuotaError    on HTTP 402
+      RuntimeError          for other HTTP errors or network failures
+    """
+    body = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+
+    # Use a context that verifies SSL by default; fall back to unverified on old OS
+    ctx = ssl.create_default_context()
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as exc:
+        try:
+            err_body = exc.read().decode('utf-8', errors='replace')
+            err_data = json.loads(err_body)
+            err_msg = (
+                err_data.get('error', {}).get('message')
+                or err_data.get('message')
+                or err_body[:300]
+            )
+        except Exception:
+            err_msg = str(exc)
+
+        if exc.code in (401, 403):
+            raise ProviderAuthError(f'API key is invalid or revoked: {err_msg}')
+        if exc.code == 402:
+            raise ProviderQuotaError(f'Account has no credits: {err_msg}')
+        if exc.code == 429:
+            raise ProviderRateLimitError(f'Rate limit hit: {err_msg}')
+        raise RuntimeError(f'HTTP {exc.code}: {err_msg}')
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f'Network error: {exc.reason}')
+    except Exception as exc:
+        raise RuntimeError(f'Request failed: {exc}')
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # Retry helper
 # ════════════════════════════════════════════════════════════════════════════════
 
 def _retry(fn, *, max_attempts: int = 3, base_delay: float = 2.0,
            retryable: tuple = ()):
-    """
-    Call fn() up to max_attempts times with exponential back-off.
-
-    retryable: tuple of exception types that should trigger a retry.
-    All other exceptions propagate immediately.
-    """
     last_exc = None
     for attempt in range(1, max_attempts + 1):
         try:
@@ -63,14 +104,14 @@ def _retry(fn, *, max_attempts: int = 3, base_delay: float = 2.0,
             last_exc = exc
             if attempt == max_attempts:
                 break
-            delay = base_delay * (2 ** (attempt - 1))   # 2s, 4s, 8s …
+            delay = base_delay * (2 ** (attempt - 1))
             _logger.warning(
                 'Retryable error (attempt %d/%d): %s — retrying in %.0fs',
                 attempt, max_attempts, exc, delay,
             )
             time.sleep(delay)
         except Exception:
-            raise  # non-retryable: propagate immediately
+            raise
     raise last_exc
 
 
@@ -85,12 +126,6 @@ class AIProvider:
         raise NotImplementedError
 
     def ping(self) -> dict:
-        """
-        Test connectivity and return a status dict.
-        Override in providers that can check their own health.
-
-        Returns: {'ok': bool, 'message': str, 'models': list[str]}
-        """
         return {'ok': True, 'message': 'No health check available.', 'models': []}
 
     @staticmethod
@@ -102,48 +137,33 @@ class AIProvider:
     def _parse_json(self, text: str) -> dict:
         """
         Robustly extract a JSON object from AI response text.
-
-        Handles:
-        - Clean JSON
-        - ```json … ``` fences
-        - ``` … ``` fences (no language tag)
-        - Inline `{…}` backtick
-        - Trailing commas (common in LLM output)
-        - Response text before/after the JSON object
+        Handles markdown fences, trailing commas, surrounding prose.
         """
         text = text.strip()
 
-        # 1. Strip markdown fences (```json … ``` or ``` … ```)
-        fence_match = re.match(
-            r'^```(?:json|JSON)?\s*\n?([\s\S]*?)\n?```\s*$', text, re.MULTILINE
-        )
-        if fence_match:
-            text = fence_match.group(1).strip()
+        fence = re.match(r'^```(?:json|JSON)?\s*\n?([\s\S]*?)\n?```\s*$', text, re.MULTILINE)
+        if fence:
+            text = fence.group(1).strip()
 
-        # 2. Strip single-backtick inline fences
         if text.startswith('`') and text.endswith('`'):
             text = text[1:-1].strip()
 
-        # 3. Extract the first JSON object if there's surrounding prose
-        obj_match = re.search(r'\{[\s\S]*\}', text)
-        if obj_match:
-            text = obj_match.group(0)
+        obj = re.search(r'\{[\s\S]*\}', text)
+        if obj:
+            text = obj.group(0)
 
-        # 4. Remove trailing commas before } or ] (common LLM mistake)
         text = re.sub(r',\s*([}\]])', r'\1', text)
 
-        # 5. Parse
         try:
             data = json.loads(text)
             if not isinstance(data, dict):
                 raise ValueError('Response is not a JSON object')
             return data
         except json.JSONDecodeError as e:
-            _logger.error('AI response is not valid JSON: %s\nRaw (first 500): %.500s', e, text)
+            _logger.error('AI response not valid JSON: %s\nRaw (500): %.500s', e, text)
             raise RuntimeError(
                 f'AI returned invalid JSON: {e}. '
-                f'This can happen with smaller models — try a larger model. '
-                f'Raw (first 200 chars): {text[:200]}'
+                f'Try a different model. Raw (200): {text[:200]}'
             )
 
 
@@ -152,26 +172,11 @@ class AIProvider:
 # ════════════════════════════════════════════════════════════════════════════════
 
 class OllamaProvider(AIProvider):
-    """
-    Runs AI extraction on a local Ollama server.
-
-    Setup:
-      1. Install Ollama from https://ollama.com
-      2. ollama pull llama3          (or mistral, qwen2, gemma2, …)
-      3. Ollama auto-starts on port 11434
-
-    Why local AI?
-      - Completely free, forever
-      - Documents never leave your server (banks, hospitals, government)
-      - Works fully offline
-      - Accuracy close to cloud AI on structured invoices
-    """
     name = 'ollama'
     DEFAULT_MODEL = 'llama3'
     DEFAULT_BASE_URL = 'http://localhost:11434'
-    DEFAULT_TIMEOUT = 120   # seconds — local inference can be slow on CPU
+    DEFAULT_TIMEOUT = 120
 
-    # Models known to work well for document extraction (sorted best → fastest)
     RECOMMENDED_MODELS = [
         ('llama3.1:70b',  'Llama 3.1 70B — best accuracy (needs ~45GB RAM)'),
         ('llama3.1:8b',   'Llama 3.1 8B — great accuracy, fast (needs ~6GB RAM)'),
@@ -182,151 +187,141 @@ class OllamaProvider(AIProvider):
         ('phi3',          'Phi 3 mini — fastest, lowest RAM (4GB)'),
     ]
 
-    def __init__(self, base_url: str = '', model: str = '',
-                 timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, base_url: str = '', model: str = '', timeout: int = DEFAULT_TIMEOUT):
         raw_url = (base_url or self.DEFAULT_BASE_URL).rstrip('/')
-        # Store the Ollama root URL (without /v1) for ping/list_models
         self._root_url = raw_url
-        # OpenAI-compat endpoint always needs /v1
         self._api_url = raw_url + '/v1' if not raw_url.endswith('/v1') else raw_url
         self._default_model = model or self.DEFAULT_MODEL
         self._timeout = timeout
 
-    # ── Health check ──────────────────────────────────────────────────────────
-
     def ping(self) -> dict:
-        """
-        Check if Ollama is running and return the list of pulled models.
-        Used by the setup wizard Test Connection button.
-        """
         try:
-            import requests as req
-        except ImportError:
-            return {
-                'ok': False,
-                'message': (
-                    'requests library not installed. '
-                    'Run: pip install requests'
-                ),
-                'models': [],
-            }
-
-        try:
-            resp = req.get(f'{self._root_url}/api/tags', timeout=5)
-            resp.raise_for_status()
-            data = resp.json()
+            req = urllib.request.Request(f'{self._root_url}/api/tags', method='GET')
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
             models = [m['name'] for m in data.get('models', [])]
-
             if not models:
                 return {
                     'ok': True,
-                    'message': (
-                        'Ollama is running but no models are pulled yet. '
-                        'Run: ollama pull llama3'
-                    ),
+                    'message': 'Ollama is running but no models pulled yet. Run: ollama pull llama3',
                     'models': [],
                 }
-
             return {
                 'ok': True,
                 'message': f'Ollama is running. {len(models)} model(s) available.',
                 'models': models,
             }
-
         except Exception as exc:
             err = str(exc)
             if 'Connection refused' in err or 'Failed to establish' in err:
-                hint = (
-                    'Ollama is not running. '
-                    'Start it with: ollama serve  (or install from ollama.com)'
-                )
+                hint = 'Ollama is not running. Start it with: ollama serve'
             else:
                 hint = f'Cannot reach Ollama at {self._root_url}: {exc}'
-
             return {'ok': False, 'message': hint, 'models': []}
 
-    def list_models(self) -> list[str]:
-        """Return names of models available on this Ollama instance."""
-        result = self.ping()
-        return result.get('models', [])
-
-    # ── Extraction ────────────────────────────────────────────────────────────
+    def list_models(self) -> list:
+        return self.ping().get('models', [])
 
     def extract(self, system_prompt: str, user_message: str, model: str) -> str:
+        effective_model = model or self._default_model
+        _logger.info('Ollama call: url=%s model=%s', self._api_url, effective_model)
+
+        # Try openai SDK first, fall back to urllib
         try:
             from openai import OpenAI, APIConnectionError, APIStatusError
+            return self._extract_openai_sdk(
+                OpenAI, APIConnectionError, APIStatusError,
+                system_prompt, user_message, effective_model,
+            )
         except ImportError:
-            raise RuntimeError('openai package not installed. Run: pip install openai')
+            pass
 
-        effective_model = model or self._default_model
-        _logger.info(
-            'Ollama call: url=%s model=%s timeout=%ds',
-            self._api_url, effective_model, self._timeout,
-        )
+        return self._extract_urllib(system_prompt, user_message, effective_model)
 
+    def _extract_openai_sdk(self, OpenAI, APIConnectionError, APIStatusError,
+                             system_prompt, user_message, model):
         client = OpenAI(
-            api_key='ollama',      # Ollama ignores the key but the SDK requires one
+            api_key='ollama',
             base_url=self._api_url,
             timeout=float(self._timeout),
-            max_retries=0,         # we handle retries ourselves
+            max_retries=0,
         )
 
         def _call():
             try:
-                response = client.chat.completions.create(
-                    model=effective_model,
+                resp = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_message},
                     ],
                     temperature=0.0,
-                    max_tokens=2000,
+                    max_tokens=4096,
                 )
-                return response.choices[0].message.content
+                return resp.choices[0].message.content
             except APIConnectionError as exc:
                 raise OllamaNotAvailable(
                     f'Cannot connect to Ollama at {self._root_url}. '
-                    f'Make sure Ollama is running: ollama serve\n'
-                    f'Install from: https://ollama.com\n'
-                    f'Detail: {exc}'
+                    f'Make sure it is running: ollama serve\n'
+                    f'Install from: https://ollama.com\nDetail: {exc}'
                 )
             except APIStatusError as exc:
                 if exc.status_code == 404:
                     raise OllamaNotAvailable(
-                        f'Model "{effective_model}" is not pulled. '
-                        f'Run: ollama pull {effective_model}\n'
-                        f'Available models: ollama list'
+                        f'Model "{model}" is not pulled. Run: ollama pull {model}'
                     )
-                raise OllamaNotAvailable(
-                    f'Ollama returned HTTP {exc.status_code}: {exc.message}'
-                )
+                raise OllamaNotAvailable(f'Ollama HTTP {exc.status_code}: {exc.message}')
 
-        return _retry(_call, max_attempts=2, base_delay=3.0,
-                      retryable=(OllamaNotAvailable,))
+        return _retry(_call, max_attempts=2, base_delay=3.0, retryable=(OllamaNotAvailable,))
+
+    def _extract_urllib(self, system_prompt: str, user_message: str, model: str) -> str:
+        url = f'{self._api_url}/chat/completions'
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_message},
+            ],
+            'temperature': 0.0,
+            'max_tokens': 4096,
+        }
+        headers = {
+            'Authorization': 'Bearer ollama',
+            'Content-Type': 'application/json',
+        }
+
+        def _call():
+            try:
+                data = _http_post(url, payload, headers, timeout=self._timeout)
+                return data['choices'][0]['message']['content']
+            except (ProviderAuthError, ProviderRateLimitError, RuntimeError) as exc:
+                msg = str(exc)
+                if 'Connection refused' in msg or 'Network error' in msg:
+                    raise OllamaNotAvailable(
+                        f'Cannot connect to Ollama at {self._root_url}. '
+                        f'Make sure it is running: ollama serve'
+                    )
+                raise OllamaNotAvailable(f'Ollama error: {exc}')
+
+        return _retry(_call, max_attempts=2, base_delay=3.0, retryable=(OllamaNotAvailable,))
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Tier 3 — Groq (cloud, free tier, fast)
+# Tier 3 — Groq (cloud, free tier, fast) — ZERO extra packages required
 # ════════════════════════════════════════════════════════════════════════════════
 
 class GroqProvider(AIProvider):
     """
-    Cloud AI via Groq — OpenAI-compatible endpoint.
+    Cloud AI via Groq — free tier, fast, works with ZERO pip installs.
 
-    Free tier: generous daily limits, great for most document workflows.
-    Get a key in 2 minutes at https://console.groq.com/keys
-
-    Best models for document extraction:
-      llama-3.3-70b-versatile  — best accuracy on the free tier
-      llama-3.1-8b-instant     — fastest, good for high-volume processing
-      gemma2-9b-it             — good on multilingual documents
+    Get a free key at https://console.groq.com/keys
+    then add it in Settings → Document Intelligence → Groq API Key.
     """
     name = 'groq'
     DEFAULT_MODEL = 'llama-3.3-70b-versatile'
     BASE_URL = 'https://api.groq.com/openai/v1'
     DEFAULT_TIMEOUT = 60
 
-    # Models available on Groq as of 2025 (update as Groq adds new ones)
     AVAILABLE_MODELS = [
         ('llama-3.3-70b-versatile',  'Llama 3.3 70B Versatile — best accuracy (recommended)'),
         ('llama-3.1-70b-versatile',  'Llama 3.1 70B Versatile'),
@@ -345,34 +340,47 @@ class GroqProvider(AIProvider):
         self._api_key = api_key
 
     def ping(self) -> dict:
-        """Verify the Groq key by listing models."""
+        """Verify the Groq key — works with urllib, no openai package needed."""
+        url = f'{self.BASE_URL}/models'
+        req = urllib.request.Request(
+            url,
+            headers={'Authorization': f'Bearer {self._api_key}'},
+            method='GET',
+        )
         try:
-            from openai import OpenAI, AuthenticationError
-        except ImportError:
-            return {'ok': False, 'message': 'openai package not installed.', 'models': []}
-
-        try:
-            client = OpenAI(api_key=self._api_key, base_url=self.BASE_URL, timeout=10)
-            models_page = client.models.list()
-            names = [m.id for m in models_page.data]
-            return {
-                'ok': True,
-                'message': 'Groq API key is valid.',
-                'models': names,
-            }
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            names = [m['id'] for m in data.get('data', [])]
+            return {'ok': True, 'message': 'Groq API key is valid.', 'models': names}
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                return {
+                    'ok': False,
+                    'message': 'Invalid Groq API key. Check Settings → Document Intelligence.',
+                    'models': [],
+                }
+            return {'ok': False, 'message': f'Groq error: HTTP {exc.code}', 'models': []}
         except Exception as exc:
-            msg = self._classify_error(exc)
-            return {'ok': False, 'message': msg, 'models': []}
+            return {'ok': False, 'message': f'Cannot reach Groq: {exc}', 'models': []}
 
     def extract(self, system_prompt: str, user_message: str, model: str) -> str:
-        try:
-            from openai import OpenAI, RateLimitError, AuthenticationError, APIStatusError
-        except ImportError:
-            raise RuntimeError('openai package not installed. Run: pip install openai')
-
         effective_model = model or self.DEFAULT_MODEL
         _logger.info('Groq call: model=%s key=%s', effective_model, self.mask_key(self._api_key))
 
+        # Try openai SDK first (richer error info), fall back to urllib
+        try:
+            from openai import OpenAI, RateLimitError, AuthenticationError, APIStatusError
+            return self._extract_openai_sdk(
+                OpenAI, RateLimitError, AuthenticationError, APIStatusError,
+                system_prompt, user_message, effective_model,
+            )
+        except ImportError:
+            _logger.debug('openai package not installed — using urllib for Groq (zero-dependency path)')
+
+        return self._extract_urllib(system_prompt, user_message, effective_model)
+
+    def _extract_openai_sdk(self, OpenAI, RateLimitError, AuthenticationError, APIStatusError,
+                             system_prompt, user_message, model):
         client = OpenAI(
             api_key=self._api_key,
             base_url=self.BASE_URL,
@@ -382,8 +390,8 @@ class GroqProvider(AIProvider):
 
         def _call():
             try:
-                response = client.chat.completions.create(
-                    model=effective_model,
+                resp = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_message},
@@ -392,55 +400,67 @@ class GroqProvider(AIProvider):
                     max_tokens=4096,
                     response_format={'type': 'json_object'},
                 )
-                return response.choices[0].message.content
+                return resp.choices[0].message.content
             except RateLimitError as exc:
                 raise ProviderRateLimitError(
-                    f'Groq rate limit hit. '
-                    f'The free tier allows ~30 requests/minute and ~14,400/day. '
-                    f'Wait a moment and try again, or upgrade at console.groq.com. '
-                    f'Detail: {exc}'
+                    f'Groq rate limit hit. Wait a moment and try again. Detail: {exc}'
                 )
             except AuthenticationError:
                 raise ProviderAuthError(
-                    'Groq API key is invalid or revoked. '
-                    'Go to Settings → Document Intelligence and update your Groq key.'
+                    'Groq API key is invalid. Go to Settings → Document Intelligence.'
                 )
             except APIStatusError as exc:
                 if exc.status_code == 429:
                     raise ProviderRateLimitError(str(exc))
                 raise RuntimeError(f'Groq API error {exc.status_code}: {exc.message}')
 
-        return _retry(
-            _call,
-            max_attempts=3,
-            base_delay=5.0,
-            retryable=(ProviderRateLimitError,),
-        )
+        return _retry(_call, max_attempts=3, base_delay=5.0, retryable=(ProviderRateLimitError,))
+
+    def _extract_urllib(self, system_prompt: str, user_message: str, model: str) -> str:
+        """Call Groq using only Python stdlib — no pip install required."""
+        url = f'{self.BASE_URL}/chat/completions'
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_message},
+            ],
+            'temperature': 0.0,
+            'max_tokens': 4096,
+            'response_format': {'type': 'json_object'},
+        }
+        headers = {
+            'Authorization': f'Bearer {self._api_key}',
+            'Content-Type': 'application/json',
+        }
+
+        def _call():
+            data = _http_post(url, payload, headers, timeout=self.DEFAULT_TIMEOUT)
+            try:
+                return data['choices'][0]['message']['content']
+            except (KeyError, IndexError) as exc:
+                raise RuntimeError(f'Unexpected Groq response format: {exc}\n{data}')
+
+        return _retry(_call, max_attempts=3, base_delay=5.0, retryable=(ProviderRateLimitError,))
 
     @staticmethod
     def _classify_error(exc) -> str:
         msg = str(exc)
-        if 'AuthenticationError' in type(exc).__name__ or '401' in msg:
+        if '401' in msg or 'AuthenticationError' in type(exc).__name__:
             return 'Invalid Groq API key. Check Settings → Document Intelligence.'
-        if 'RateLimitError' in type(exc).__name__ or '429' in msg:
+        if '429' in msg or 'RateLimitError' in type(exc).__name__:
             return 'Groq rate limit hit. Wait a moment and try again.'
         return f'Groq error: {exc}'
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Tier 3 — OpenAI
+# Tier 3 — OpenAI — ZERO extra packages required
 # ════════════════════════════════════════════════════════════════════════════════
 
 class OpenAIProvider(AIProvider):
-    """
-    Cloud AI via OpenAI.
-
-    Best models for document extraction:
-      gpt-4o-mini  — cheapest, ~$0.01 per document, 80% of gpt-4o quality
-      gpt-4o       — best accuracy, ~$0.10 per document
-    """
     name = 'openai'
     DEFAULT_MODEL = 'gpt-4o-mini'
+    BASE_URL = 'https://api.openai.com/v1'
     DEFAULT_TIMEOUT = 60
 
     def __init__(self, api_key: str):
@@ -453,30 +473,43 @@ class OpenAIProvider(AIProvider):
         self._api_key = api_key
 
     def ping(self) -> dict:
+        url = f'{self.BASE_URL}/models'
+        req = urllib.request.Request(
+            url,
+            headers={'Authorization': f'Bearer {self._api_key}'},
+            method='GET',
+        )
         try:
-            from openai import OpenAI
-        except ImportError:
-            return {'ok': False, 'message': 'openai package not installed.', 'models': []}
-
-        try:
-            client = OpenAI(api_key=self._api_key, timeout=10)
-            models_page = client.models.list()
-            # Filter to GPT models only for display
-            names = [m.id for m in models_page.data if 'gpt' in m.id.lower()][:10]
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            names = [m['id'] for m in data.get('data', []) if 'gpt' in m['id']][:10]
             return {'ok': True, 'message': 'OpenAI API key is valid.', 'models': names}
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                return {'ok': False, 'message': 'Invalid OpenAI API key.', 'models': []}
+            if exc.code == 402:
+                return {'ok': False, 'message': 'OpenAI account has no credits.', 'models': []}
+            return {'ok': False, 'message': f'OpenAI error: HTTP {exc.code}', 'models': []}
         except Exception as exc:
-            msg = self._classify_error(exc)
-            return {'ok': False, 'message': msg, 'models': []}
+            return {'ok': False, 'message': f'Cannot reach OpenAI: {exc}', 'models': []}
 
     def extract(self, system_prompt: str, user_message: str, model: str) -> str:
-        try:
-            from openai import OpenAI, RateLimitError, AuthenticationError, APIStatusError
-        except ImportError:
-            raise RuntimeError('openai package not installed. Run: pip install openai')
-
         effective_model = model or self.DEFAULT_MODEL
         _logger.info('OpenAI call: model=%s key=%s', effective_model, self.mask_key(self._api_key))
 
+        try:
+            from openai import OpenAI, RateLimitError, AuthenticationError, APIStatusError
+            return self._extract_openai_sdk(
+                OpenAI, RateLimitError, AuthenticationError, APIStatusError,
+                system_prompt, user_message, effective_model,
+            )
+        except ImportError:
+            _logger.debug('openai package not installed — using urllib for OpenAI')
+
+        return self._extract_urllib(system_prompt, user_message, effective_model)
+
+    def _extract_openai_sdk(self, OpenAI, RateLimitError, AuthenticationError, APIStatusError,
+                             system_prompt, user_message, model):
         client = OpenAI(
             api_key=self._api_key,
             timeout=float(self.DEFAULT_TIMEOUT),
@@ -485,71 +518,77 @@ class OpenAIProvider(AIProvider):
 
         def _call():
             try:
-                response = client.chat.completions.create(
-                    model=effective_model,
+                resp = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_message},
                     ],
                     temperature=0.0,
-                    max_tokens=2000,
+                    max_tokens=4096,
+                    response_format={'type': 'json_object'},
                 )
-                return response.choices[0].message.content
+                return resp.choices[0].message.content
             except RateLimitError as exc:
-                raise ProviderRateLimitError(
-                    f'OpenAI rate limit or quota exceeded. '
-                    f'Check your usage at platform.openai.com/usage. '
-                    f'Detail: {exc}'
-                )
+                raise ProviderRateLimitError(f'OpenAI rate limit: {exc}')
             except AuthenticationError:
-                raise ProviderAuthError(
-                    'OpenAI API key is invalid or has no credits. '
-                    'Check https://platform.openai.com/api-keys'
-                )
+                raise ProviderAuthError('OpenAI API key is invalid.')
             except APIStatusError as exc:
                 if exc.status_code == 429:
                     raise ProviderRateLimitError(str(exc))
                 if exc.status_code == 402:
-                    raise ProviderQuotaError(
-                        'OpenAI account has no credits. '
-                        'Add a payment method at platform.openai.com/billing'
-                    )
-                raise RuntimeError(f'OpenAI API error {exc.status_code}: {exc.message}')
+                    raise ProviderQuotaError('OpenAI account has no credits.')
+                raise RuntimeError(f'OpenAI error {exc.status_code}: {exc.message}')
 
-        return _retry(
-            _call,
-            max_attempts=3,
-            base_delay=5.0,
-            retryable=(ProviderRateLimitError,),
-        )
+        return _retry(_call, max_attempts=3, base_delay=5.0, retryable=(ProviderRateLimitError,))
+
+    def _extract_urllib(self, system_prompt: str, user_message: str, model: str) -> str:
+        """Call OpenAI using only Python stdlib — no pip install required."""
+        url = f'{self.BASE_URL}/chat/completions'
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_message},
+            ],
+            'temperature': 0.0,
+            'max_tokens': 4096,
+            'response_format': {'type': 'json_object'},
+        }
+        headers = {
+            'Authorization': f'Bearer {self._api_key}',
+            'Content-Type': 'application/json',
+        }
+
+        def _call():
+            data = _http_post(url, payload, headers, timeout=self.DEFAULT_TIMEOUT)
+            try:
+                return data['choices'][0]['message']['content']
+            except (KeyError, IndexError) as exc:
+                raise RuntimeError(f'Unexpected OpenAI response format: {exc}')
+
+        return _retry(_call, max_attempts=3, base_delay=5.0, retryable=(ProviderRateLimitError,))
 
     @staticmethod
     def _classify_error(exc) -> str:
         msg = str(exc)
-        if 'AuthenticationError' in type(exc).__name__ or '401' in msg:
+        if '401' in msg:
             return 'Invalid OpenAI API key.'
         if '402' in msg or 'quota' in msg.lower():
-            return 'OpenAI account has no credits. Add billing at platform.openai.com.'
-        if 'RateLimitError' in type(exc).__name__ or '429' in msg:
+            return 'OpenAI account has no credits.'
+        if '429' in msg:
             return 'OpenAI rate limit hit. Try again in a moment.'
         return f'OpenAI error: {exc}'
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# Tier 3 — Anthropic (Claude)
+# Tier 3 — Anthropic (Claude) — requires anthropic package
 # ════════════════════════════════════════════════════════════════════════════════
 
 class AnthropicProvider(AIProvider):
-    """
-    Cloud AI via Anthropic.
-
-    Best models for document extraction:
-      claude-haiku-4-5-20251001  — cheapest, fast, great for invoices
-      claude-sonnet-4-6          — balanced quality/cost
-      claude-opus-4-7            — highest accuracy on complex docs
-    """
     name = 'anthropic'
     DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
+    BASE_URL = 'https://api.anthropic.com/v1'
     DEFAULT_TIMEOUT = 60
 
     def __init__(self, api_key: str):
@@ -562,14 +601,21 @@ class AnthropicProvider(AIProvider):
         self._api_key = api_key
 
     def ping(self) -> dict:
+        # Use the anthropic SDK if available; otherwise try a lightweight token-count call
         try:
             import anthropic
         except ImportError:
-            return {'ok': False, 'message': 'anthropic package not installed. Run: pip install anthropic', 'models': []}
-
+            return {
+                'ok': False,
+                'message': (
+                    'anthropic package not installed. '
+                    'Run: pip install anthropic\n'
+                    'Or switch to Groq — same quality, zero pip installs.'
+                ),
+                'models': [],
+            }
         try:
             client = anthropic.Anthropic(api_key=self._api_key)
-            # Minimal test — count_tokens is a cheap API call
             client.messages.count_tokens(
                 model=self.DEFAULT_MODEL,
                 messages=[{'role': 'user', 'content': 'ping'}],
@@ -577,68 +623,53 @@ class AnthropicProvider(AIProvider):
             return {
                 'ok': True,
                 'message': 'Anthropic API key is valid.',
-                'models': [
-                    'claude-haiku-4-5-20251001',
-                    'claude-sonnet-4-6',
-                    'claude-opus-4-7',
-                ],
+                'models': ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'],
             }
         except Exception as exc:
-            msg = self._classify_error(exc)
-            return {'ok': False, 'message': msg, 'models': []}
+            return {'ok': False, 'message': self._classify_error(exc), 'models': []}
 
     def extract(self, system_prompt: str, user_message: str, model: str) -> str:
         try:
             import anthropic
         except ImportError:
-            raise RuntimeError('anthropic package not installed. Run: pip install anthropic')
+            raise ProviderAuthError(
+                'The Anthropic provider requires the anthropic Python package.\n'
+                'Run:  pip install anthropic\n\n'
+                'Tip: Switch to Groq in Settings → Document Intelligence — '
+                'it provides the same AI quality with ZERO extra packages.'
+            )
 
         effective_model = model or self.DEFAULT_MODEL
         _logger.info('Anthropic call: model=%s key=%s', effective_model, self.mask_key(self._api_key))
 
-        client = anthropic.Anthropic(
-            api_key=self._api_key,
-            timeout=float(self.DEFAULT_TIMEOUT),
-            max_retries=0,
-        )
+        client = anthropic.Anthropic(api_key=self._api_key, timeout=float(self.DEFAULT_TIMEOUT), max_retries=0)
 
         def _call():
             try:
-                message = client.messages.create(
+                msg = client.messages.create(
                     model=effective_model,
-                    max_tokens=2000,
+                    max_tokens=4096,
                     system=system_prompt,
                     messages=[{'role': 'user', 'content': user_message}],
                 )
-                return message.content[0].text
+                return msg.content[0].text
             except anthropic.RateLimitError as exc:
-                raise ProviderRateLimitError(
-                    f'Anthropic rate limit hit. '
-                    f'Check usage at console.anthropic.com. Detail: {exc}'
-                )
+                raise ProviderRateLimitError(f'Anthropic rate limit: {exc}')
             except anthropic.AuthenticationError:
-                raise ProviderAuthError(
-                    'Anthropic API key is invalid. '
-                    'Check Settings → Document Intelligence.'
-                )
+                raise ProviderAuthError('Anthropic API key is invalid.')
             except anthropic.APIStatusError as exc:
-                if exc.status_code in (529, 529):   # Anthropic overload
-                    raise ProviderRateLimitError(f'Anthropic overloaded: {exc}')
-                raise RuntimeError(f'Anthropic API error {exc.status_code}: {exc.message}')
+                if exc.status_code in (429, 529):
+                    raise ProviderRateLimitError(str(exc))
+                raise RuntimeError(f'Anthropic error {exc.status_code}: {exc.message}')
 
-        return _retry(
-            _call,
-            max_attempts=3,
-            base_delay=5.0,
-            retryable=(ProviderRateLimitError,),
-        )
+        return _retry(_call, max_attempts=3, base_delay=5.0, retryable=(ProviderRateLimitError,))
 
     @staticmethod
     def _classify_error(exc) -> str:
         msg = str(exc)
-        if 'AuthenticationError' in type(exc).__name__ or '401' in msg:
+        if '401' in msg or 'AuthenticationError' in type(exc).__name__:
             return 'Invalid Anthropic API key.'
-        if 'RateLimitError' in type(exc).__name__ or '429' in msg or '529' in msg:
+        if '429' in msg or '529' in msg:
             return 'Anthropic rate limit or overload. Try again in a moment.'
         return f'Anthropic error: {exc}'
 
@@ -647,7 +678,7 @@ class AnthropicProvider(AIProvider):
 # Registry + factory
 # ════════════════════════════════════════════════════════════════════════════════
 
-PROVIDER_REGISTRY: dict[str, type[AIProvider]] = {
+PROVIDER_REGISTRY: dict = {
     'ollama':    OllamaProvider,
     'groq':      GroqProvider,
     'openai':    OpenAIProvider,
@@ -663,14 +694,6 @@ def get_provider(
     ollama_url: str = '',
     ollama_model: str = '',
 ) -> AIProvider:
-    """
-    Return the right AIProvider instance for the given provider name.
-
-    Raises RuntimeError for unknown provider names.
-    Individual providers raise ProviderAuthError when their key is missing.
-    OllamaProvider raises OllamaNotAvailable when the server is unreachable
-    (the document processor catches this and falls back to Tier 1).
-    """
     cls = PROVIDER_REGISTRY.get(provider_name)
     if cls is None:
         raise RuntimeError(
